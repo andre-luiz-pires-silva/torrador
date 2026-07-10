@@ -6,15 +6,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Repository status
 
-Greenfield: only `CLAUDE.md` and `docs/PRD-torrador-esp32-v0.md` exist so far — no firmware, `platformio.ini`, `data/` (LittleFS), or git yet. When scaffolding, follow the stack and portability rules below; do not introduce a build system other than PlatformIO.
+Scaffolded: `platformio.ini` (single `esp32` env), `src/` (skeleton firmware + `board_config.h`), and `data/` (LittleFS web UI) exist. **V0 — proof of concept** phase. Follow the stack and code-structure rules below; do not introduce a build system other than PlatformIO.
 
-## Build & commands (PlatformIO, once scaffolded)
+## Build & commands (PlatformIO)
 
-Two environments share one codebase; migration between boards is only an env switch (see Portability rules).
+Single environment (`esp32`); do not introduce a build system other than PlatformIO.
 
-- Build: `pio run -e esp8266` / `pio run -e esp32`
-- Flash firmware + serial monitor: `pio run -e esp8266 -t upload -t monitor`
-- Build/upload the LittleFS image (web UI in `data/`, rules, `config.json`): `pio run -e esp8266 -t buildfs` / `-t uploadfs` — remember firmware and filesystem are flashed separately.
+- Build: `pio run`
+- Flash firmware + serial monitor: `pio run -t upload -t monitor`
+- Build/upload the LittleFS image (web UI in `data/`, rules, `config.json`): `pio run -t buildfs` / `-t uploadfs` — remember firmware and filesystem are flashed separately.
 - Serial monitor only: `pio device monitor`
 
 ## What this project is
@@ -30,21 +30,20 @@ Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) 
 
 ## Platform and build
 
-- **Final target: ESP32 (WROOM). Initial development: ESP8266** (hardware available now).
-- Build via **PlatformIO** with two environments: `esp8266` and `esp32`. The code MUST compile and work on both — migration is just an environment switch.
-- Per-environment dependencies: `ESPAsyncTCP` (esp8266) vs `AsyncTCP` (esp32). PlatformIO resolves this via each `[env:]`'s `lib_deps`.
+- **Target: ESP32 (WROOM).** Single board; no dual-board support.
+- Build via **PlatformIO**, one environment: `esp32`. Async transport dependency is `AsyncTCP`.
 
-## Portability rules (non-negotiable)
+## Code structure rules (non-negotiable)
 
-1. **No ESP32-exclusive APIs**: no `xTaskCreatePinnedToCore`, no explicit FreeRTOS tasks, no second-core usage. Single cooperative loop.
-2. **Conserve RAM as if always on ESP8266** (~40KB free heap in practice): web pages served from LittleFS, never from RAM strings; moderate JSON buffers; avoid `String` in favor of fixed buffers where critical.
-3. **All board-dependent code lives in `board_config.h`**: WiFi/mDNS includes (`ESP8266WiFi.h` vs `WiFi.h`, `ESP8266mDNS.h` vs `ESPmDNS.h`) and pin definitions, via `#ifdef ESP32 / #else`. No board `#ifdef` outside this file. No pin number hardcoded outside this file.
+1. **Single cooperative loop for V0**: no explicit FreeRTOS tasks. Keep the control loop simple and predictable; revisit only if a concrete need arises.
+2. **Serve web pages from LittleFS, never from RAM strings**; use moderate JSON buffers; prefer fixed buffers over `String` where critical.
+3. **All board/pin configuration lives in `board_config.h`**: WiFi/mDNS/async-transport includes and pin definitions. No pin number hardcoded outside this file.
 
 ## Technical stack (decided — do not replace)
 
-- **ESPAsyncWebServer** (async server; never use the synchronous `ESP8266WebServer`/`WebServer`)
+- **ESPAsyncWebServer** (async server; never use the synchronous `WebServer`)
 - **LittleFS** for: interface static files (HTML/CSS/JS), persisted rules, network `config.json`
-- **ESPmDNS/ESP8266mDNS**: default name `torrador` -> `http://torrador.local`
+- **ESPmDNS**: default name `torrador` -> `http://torrador.local`
 - **Plain HTTP, port 80, no TLS** — conscious decision (local network); do not "improve" to HTTPS
 - WiFi provisioning: **custom implementation** (AP + captive portal with `DNSServer`) — do not use WiFiManager
 
@@ -72,13 +71,13 @@ Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) 
 | Custom provisioning (not WiFiManager) | Reuses async stack + single visual identity |
 | Single manual/auto toggle (not per relay) | Product decision |
 | Deactivation priority on ties | Thermal safety |
-| ESP32 as final target | Dual-core + RAM for simultaneous web + MODBUS in Phase 3 |
+| ESP32-only (ESP8266 dropped) | Simpler build/code; dual-core + RAM for simultaneous web + MODBUS in Phase 3 |
 
 ## Open (decide during implementation, ask if relevant)
 
 - WebSocket vs. polling for dashboard updates
 - HTTP Basic Auth: include in V0 or not
-- Final pin assignment (avoid boot/strapping pins on both boards)
+- Final pin assignment (avoid ESP32 boot/strapping pins)
 
 ## Out of scope for V0 (do not implement)
 

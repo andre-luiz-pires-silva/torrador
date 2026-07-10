@@ -1,0 +1,7 @@
+# PlatformIO build output and cache
+.pio/
+
+# PlatformIO regenerates the VS Code IntelliSense config; keep only the
+# extension recommendations under version control.
+.vscode/*
+!.vscode/extensions.json

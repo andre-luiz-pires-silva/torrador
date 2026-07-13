@@ -21,10 +21,19 @@
 // Two MAX6675 share SCK + SO (read-only bus), each with its own CS.
 // Relay modules are active-LOW. Strapping/boot pins are avoided for outputs.
 // -----------------------------------------------------------------------------
+
+// MAX6675 thermocouple readers (shared SPI, individual CS).
 static const uint8_t PIN_MAX6675_SCK   = 18;  // shared thermocouple clock
 static const uint8_t PIN_MAX6675_SO    = 19;  // shared thermocouple data (MISO)
-static const uint8_t PIN_MAX6675_CS_BT = 21;  // bean temperature (BT) chip-select
-static const uint8_t PIN_MAX6675_CS_ET = 22;  // air/exhaust temperature (ET) chip-select
+static const uint8_t PIN_MAX6675_CS_BT = 5;   // bean temperature (BT) chip-select
+static const uint8_t PIN_MAX6675_CS_ET = 17;  // air/exhaust temperature (ET) chip-select
+
+// SSD1306 0.96" OLED over I2C. These are the ESP32 default Wire pins, so the
+// U8g2 hardware-I2C driver uses them without extra setup.
+static const uint8_t PIN_OLED_SDA      = 21;  // I2C data
+static const uint8_t PIN_OLED_SCL      = 22;  // I2C clock
+
+// Relays (active-LOW) and provisioning button — used from later steps on.
 static const uint8_t PIN_RELAY_BURNER  = 25;  // burner relay (active-LOW)
 static const uint8_t PIN_RELAY_DRUM    = 26;  // drum motor relay (active-LOW)
 static const uint8_t PIN_BOOT_BUTTON   = 0;   // BOOT button — WiFi credential reset

@@ -6,10 +6,19 @@
 
 ---
 
-## 0. Language Policy
+## 0. Language & Branding Policy
 
+### 0.1 Language
 - **Code and system documentation: English is the default language.** All identifiers, code comments, commit messages, and technical documentation (including this PRD) are written in English.
 - **User-facing text** (admin/operation web interface, operator-facing messages): **Portuguese (BR) only in V0**. The final plan is to support **both Portuguese and English** via internationalization (i18n). User-facing strings must therefore be structured to allow later localization (centralized strings, not hardcoded deep in logic).
+
+### 0.2 Branding (white-label)
+The firmware is **white-label**: the same codebase is sold to multiple manufacturers, each with its own identity. The product name (and, later, logo/colors) must come from a single **branding configuration**, never hardcoded across the code.
+
+- **Compile-time branding**, one build per manufacturer (`branding.h` / build flags), not a runtime setting — zero runtime/RAM cost. Change the branding config, rebuild, and every user-visible surface follows. Default brand of this repo: **Torrador**.
+- **V0 scope (where possible and not costly):** at minimum the product name, plus everything derived from it — web UI title/header, serial boot banner, mDNS default hostname (`torrador`), and AP SSID (`Torrador-Setup`). Deeper visual theming (logos, colors) may be layered on in later phases; the invariant is that no brand string is hardcoded deep in logic.
+- Branding shares the same "centralized strings" pattern as i18n: the product name is a single value that user-facing strings interpolate.
+- The **web UI** (static files on LittleFS) must read the brand from the firmware (e.g. the `/status` JSON or a small branding endpoint/generated file), not bake the product name into HTML/JS.
 
 ---
 
@@ -97,7 +106,7 @@ POWER ON
 ```
 
 **Configuration mode (AP):**
-- The ESP creates its own network `Torrador-Setup`; default IP `192.168.4.1`
+- The ESP creates its own network `{Brand}-Setup` (`Torrador-Setup` for the default brand, per §0.2); default IP `192.168.4.1`
 - **Captive portal** via `DNSServer` answering all DNS queries with the ESP's IP — the phone opens the configuration page automatically on connect
 - Configuration page served from LittleFS, containing:
   - SSID (with a "scan networks" button via `WiFi.scanNetworks()`)
@@ -225,7 +234,7 @@ Rule = {
 
 ### 3.5 Network
 - **HTTP** on port 80, no TLS
-- **mDNS:** `torrador.local` (name configurable during provisioning; default `torrador`)
+- **mDNS:** `torrador.local` (name configurable during provisioning; default derives from the branding config — `torrador` for the default brand, per §0.2)
 - **Provisioning:** AP mode + captive portal (see F6); credentials in `config.json` on LittleFS
 - **Reserved IP** on the router via DHCP reservation (ESP MAC) — user configuration, not firmware
 - mDNS works only on the same local network (does not cross routers); native support on macOS/iOS/Android/Linux; on Windows it may depend on the Bonjour service
@@ -288,3 +297,4 @@ Rule = {
 10. Connection failure after timeout automatically returns to AP mode; the physical boot button and a web interface option also reset the network configuration
 11. The firmware compiles and runs on both ESP8266 and ESP32 from the same code, changing only the build environment (PlatformIO)
 12. User-facing interface text is in Portuguese (BR), with strings structured to allow future English localization
+13. The product name is not hardcoded: it comes from the branding config, and changing it (plus rebuilding) updates the web UI, serial boot banner, mDNS default hostname, and AP SSID (white-label, per §0.2)

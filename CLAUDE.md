@@ -28,6 +28,16 @@ Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) 
 - **Code and system documentation: English is the default language.** All identifiers, code comments, commit messages, technical docs (PRD, this file, ADRs), and internal artifacts are written in English.
 - **User-facing text** (admin/operation web interface, messages shown to the operator): **Portuguese (BR) only in V0**. The final plan is to support **both Portuguese and English** (i18n), so user-facing strings must be structured to allow localization later (avoid hardcoding UI strings deep in logic; keep them in a single place that can become a translation table).
 
+## Branding / white-label
+
+The firmware is **white-label**: the same codebase ships to multiple manufacturers, each with its own identity. The product name (and later logo/colors) MUST come from a single branding configuration — never hardcode a brand string across the codebase.
+
+- **Branding is compile-time**, one build per manufacturer (a `branding.h` / build flags), not a runtime setting. Change the branding config, rebuild, and every user-visible surface follows. Default brand of this repo: **Torrador**.
+- **Where possible and not costly** (V0 target): at minimum the product name string, plus everything derived from it — web UI title/header, serial boot banner, mDNS default hostname, and AP SSID. Deeper visual theming (logos, colors) can be layered on later; the invariant is *no brand string hardcoded deep in logic*.
+- The branding config sets the **defaults** for identity strings: mDNS host (`torrador` for the default brand), AP SSID (`Torrador-Setup`). The mDNS name stays user-overridable during provisioning (F6).
+- **Same pattern as i18n:** the product name is a single centralized value that user-facing strings interpolate (see Language policy). Keep branding and translatable strings in one place.
+- **Web UI (static files on LittleFS):** the front-end must read the brand from the firmware (e.g. the `/status` JSON or a small branding endpoint/generated file), not bake the product name into HTML/JS.
+
 ## Platform and build
 
 - **Target: ESP32 (WROOM).** Single board; no dual-board support.
@@ -43,7 +53,7 @@ Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) 
 
 - **ESPAsyncWebServer** (async server; never use the synchronous `WebServer`)
 - **LittleFS** for: interface static files (HTML/CSS/JS), persisted rules, network `config.json`
-- **ESPmDNS**: default name `torrador` -> `http://torrador.local`
+- **ESPmDNS**: default name derives from the branding config (`torrador` for the default brand) -> `http://torrador.local`
 - **Plain HTTP, port 80, no TLS** — conscious decision (local network); do not "improve" to HTTPS
 - WiFi provisioning: **custom implementation** (AP + captive portal with `DNSServer`) — do not use WiFiManager
 
@@ -58,7 +68,7 @@ Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) 
 
 ## Network provisioning (PRD F6)
 
-- No saved credentials -> AP mode `Torrador-Setup` (IP `192.168.4.1`) + captive portal.
+- No saved credentials -> AP mode `Torrador-Setup` (IP `192.168.4.1`) + captive portal. AP SSID is `{Brand}-Setup`, derived from the branding config (`Torrador-Setup` for the default brand).
 - STA connection failure after timeout (~60s) -> automatic fallback to AP mode.
 - Credential reset: BOOT button held at boot, automatic fallback, and `/network/reset` route in the interface.
 
@@ -72,6 +82,7 @@ Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) 
 | Single manual/auto toggle (not per relay) | Product decision |
 | Deactivation priority on ties | Thermal safety |
 | ESP32-only (ESP8266 dropped) | Simpler build/code; dual-core + RAM for simultaneous web + MODBUS in Phase 3 |
+| White-label branding, compile-time | One codebase, many manufacturers; per-build identity with no runtime cost |
 
 ## Open (decide during implementation, ask if relevant)
 

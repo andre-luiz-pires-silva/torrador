@@ -1,157 +1,151 @@
 # Design & ADR — Flame / Burner Control (gas)
 
 **Status:** Decisions closed, ready for implementation
-**Phase goal:** Add safe gas-burner actuation (valve + spark + flame supervision)
-plus a simple min/max temperature hold, configured over the serial console.
-**Relates to:** `PRD-torrador-esp32-v0.md` (F2/F3/F4 burner control, safety rules)
+**Phase goal:** Safe gas-burner actuation by **delegating combustion to a dedicated
+flame controller (Inova INV-27109)**, plus a simple min/max temperature hold, all
+configured over the serial console.
+**Relates to:** `PRD-torrador-esp32-v0.md` (F4 burner control, safety rules)
+**Controller manual:** `docs/manuals/Manual_INV_27109v9.1.pdf`
 **Last updated:** 2026-07-14
 
 ---
 
 ## 1. Context & goal
 
-Up to now the "burner" was an abstract on/off relay. This phase turns it into a
-real **gas burner controller** with combustion supervision:
+The burner is driven by a **dedicated, purpose-built flame controller** — the
+**Inova INV-27109** — which internally handles the dangerous, real-time parts of
+combustion:
 
-- Drive a gas **solenoid valve** and a **spark generator** to light the flame.
-- Prove the flame with an **ionization sensor** and keep gas open **only** while
-  flame is proven (or during a short, bounded ignition trial).
-- Persist the parameters needed to manage all of this, editable over the
-  **serial console**.
-- On top of it, hold a temperature within a configured **min/max band** by
-  cycling the burner on/off.
+- Drives the **spark generator** (S1) and the **gas solenoid valve** (S2).
+- Senses flame by **ionization** and closes gas on flame loss.
+- Runs a fixed ignition sequence and a start-up short-circuit test.
 
-Guiding safety principle: **gas is open only when flame is proven, or during a
-bounded ignition trial.** Everything below derives from this.
+The **ESP32 orchestrates**: it decides *when* heat is wanted (min/max band),
+**enables** the controller, **supervises** it (via the controller's fault
+output), latches a safety lockout, and drives the display/serial UI.
+
+Guiding principle unchanged: **gas is open only under proven flame** — but now the
+flame proving and the immediate gas cutoff are the controller's job, not ours.
+The manufacturer explicitly states the INV-27109 **must not be used alone as a
+safety system**, so the ESP adds a master lockout. An independent mechanical
+safety backstop on the gas line is strongly recommended at the installation, but
+it is **outside the scope of this firmware/controller** (see §9 and §12).
 
 ## 2. Scope
 
 **In scope**
-- Gas heat source only (electric reserved as a stub in the abstraction).
-- Direct ignition of a single main valve (no pilot).
-- Ignition state machine with retries and a latched lockout.
-- Ionization-based flame supervision (fast, near-boolean signal).
+- Gas heat source via the INV-27109 (electric reserved as a stub).
+- ESP **enables** the controller by power-gating its mains supply through a relay.
+- ESP **supervises** via the controller's 12V fault output, read through a
+  **PC817 optocoupler**; latched master lockout on failure.
 - Min/max temperature hold, expressed as the two-threshold subset of the rule
   engine.
 - Serial command interface for configuration and lockout reset.
-- **Dry run only** — relays/LEDs as actuators, **no real gas connected**; flame
-  simulated over serial. Real-gas commissioning is a later, separately gated step.
+- **Dry run** — no real gas connected; the fault/flame input exercised with a
+  push-button (or the real INV, which faults with no gas).
 
 **Out of scope (this phase)**
 - Electric resistive heat source (reserved only).
-- Pilot flame, valve proving, pre/post purge (no ventilation control in V0).
-- Full rule engine (up to 5 conditions, AND/OR) — only the min/max subset now.
+- Full rule engine (5 conditions, AND/OR) — only the min/max subset now.
 - Flame modulation / time-proportioning (Phase 3).
 - Web UI for configuration (serial only this phase).
+- Ignition timing / purge parameters — these live **inside the INV-27109** and
+  are not ours to configure.
 
-## 3. Decisions (ADR)
+## 3. Hardware & reference devices
+
+- **Inova INV-27109** — flame controller. 85–250 VAC; 1 flame-sensor (ionization)
+  input; **2 relay outputs 5A/220VAC** — S1 = spark unit ("usina"), S2 = gas
+  solenoid valve; **1 buzzer output 12VDC / 20mA max** (fault indicator). Fixed
+  ignition cycle: spark 5s on / 3s off, **3 attempts** (~24s window); holds S2
+  while flame is sensed; on failure turns outputs off and asserts the buzzer.
+  Start-up short-circuit test. **Does not latch** (retries on flame absence).
+- **PC817 optocoupler** — reads the 12V fault output into a 3.3V ESP GPIO with
+  galvanic isolation (see §10).
+- **Mains-rated relay** — the ESP "enable": gates the INV's 85–250VAC supply.
+- Driven by the INV (owned by the operator's hardware): the spark unit ("usina"),
+  the AC **gas solenoid valve** (**110 VAC, normally-closed** — matches the mains
+  fed to the INV), the ionization electrode, and the spark electrode.
+- **RC snubber** across the solenoid-valve coil (inductive load on a
+  resistive-rated relay — protects contacts, reduces EMI on the ionization sense).
+
+## 4. Decisions (ADR)
 
 | # | Decision | Rationale |
 |---|---|---|
-| D1 | Flame detection by **ionization rod** (flame rectification) | Industry standard; detects presence/loss in ms. Temperature-based sensing is too slow for flame-loss safety. |
-| D2 | **Direct ignition, single main valve** (no pilot) | Simplest topology; matches the available hardware. Each "on" is a full ignition of the main burner. |
-| D3 | Spark is **continuous while energized** (gated) | Matches typical igniter modules; firmware only holds one output on for `spark_duration`. |
-| D4 | Regulation sensor is **configurable, default BT** | BT is the only channel wired today (step 1); keep it a config field so ET can be selected later without a rebuild. |
-| D5 | **Lockout reset via BOOT button** (short press at runtime) | Recovers without a terminal in real operation. Boot-time hold stays reserved for the future network reset (PRD F6). |
-| D6 | **No pre/post purge** — only the inter-trial delay | No ventilation control in V0; an active purge isn't possible. The mandatory gas-closed delay between retries is the safety-relevant wait. |
-| D7 | Min/max band is **a case of the rule engine** | One demand model: activation = `temp < min`, deactivation = `temp > max`, deactivation wins ties (existing safety rule). |
-| D8 | Implement the **min/max subset now**, rule-engine-shaped | Meets the phase goal fast; the full engine (5 conditions, AND/OR) slots into the same demand layer later. |
-| D9 | Configuration via **serial command grammar** | Scriptable, easy to extend and log; no navigation state. Web UI comes later. |
-| D10 | Flame reading behind a **`FlameSensor` abstraction** | The electrical front-end (digital comparator vs analog ADC) is chosen at hardware-assembly time; firmware does not block on it. |
+| D1 | **Delegate combustion to a dedicated controller (INV-27109)** — Architecture B | Ignition timing, ionization sensing, spark/valve drive and short-circuit test are done by a purpose-built device; the ESP orchestrates. Simpler, safer firmware for a commercial white-label product. |
+| D2 | Flame detection by **ionization**, performed **inside the INV-27109** | Industry-standard fast sensing; the high-voltage front-end lives in the module, not on our board. |
+| D3 | **Direct ignition, single gas valve** (no pilot), driven by the INV | Simplest topology; the INV cycles the spark (S1) and holds the valve (S2). |
+| D4 | Control the INV by **power-gating its mains via a relay** (it has no enable input) | The INV runs when energized; the ESP relay is the call-for-heat and a hard master cutoff — **power off ⇒ gas closes**. |
+| D5 | Read the INV fault (12V buzzer) via a **PC817 optocoupler** | Galvanic isolation from the mains-referenced 12V; clean 3.3V logic to the ESP. |
+| D6 | **ESP-level master LOCKOUT**; reset via BOOT short press | The INV does not latch and its manual says it must not be the sole safety system. The ESP latches and refuses to re-enable until manual reset. |
+| D7 | Regulation sensor **configurable, default BT** | Only BT is wired today; keep it a config field so ET can be selected later. |
+| D8 | Min/max band is the **two-threshold subset of the rule engine** | One demand model: activation `temp < min`, deactivation `temp > max`; deactivation wins ties. |
+| D9 | Configuration via **serial command grammar** | Scriptable, easy to extend/log; web UI later. |
+| D10 | Independent mechanical safety backstop — **out of scope** of this FW/controller (installer's responsibility) | Manufacturer says the INV must not be the sole safety system; a mechanical backstop is strongly recommended at installation, but this software cannot provide it. Documented, not implemented. |
 
-## 4. Architecture & abstractions
-
-Two levels, deliberately separated:
-
-- **Demand** — "is heat wanted?" Produced by the rule engine (min/max subset in
-  this phase). Pure function of temperature; outputs a boolean burner demand.
-- **Actuation** — "how to produce/stop flame safely?" The `HeatSource` executes
-  the demand.
+## 5. Architecture & abstractions
 
 ```
-temperature ──► [ demand layer / rule engine (min<->max) ] ──► burner demand (bool)
-                                                                     │
-                                                                     ▼
-                                              [ HeatSource: GasBurner state machine ]
-                                                 drives valve + spark, reads FlameSensor
+temperature ─► [ demand layer / rule engine (min<->max) ] ─► burner demand (bool)
+                                                                   │
+                                                                   ▼
+                                        [ HeatSource: GasBurner (thin supervisor) ]
+                                          enable relay ─► INV-27109 ─► spark + valve + ionization
+                                          reads INV fault (12V) ◄── via PC817 opto
 ```
-
-Interfaces (English identifiers per language policy):
 
 - `HeatSource`: `request(bool on)`, `tick()`, `State state()`.
-  - `GasBurner` implements the ignition state machine (§5).
-  - `ElectricHeater` — reserved **stub** only (would be a plain relay + its own
-    over-temperature cutoff).
-- `FlameSensor`: `bool present()` — implementation (digital/analog) chosen later
-  (D10). A serial-driven fake backs the dry-run tests.
-- Demand layer: rule-engine-shaped, but only min/max threshold logic;
-  **deactivation is evaluated first and wins ties.**
+  - `GasBurner` is now a **thin supervisor**: it enables the INV, watches the
+    fault line, applies the confirmation window, and latches the lockout.
+  - `ElectricHeater` — reserved **stub** (a relay + its own over-temp cutoff).
+- `FlameSensor`: `bool fault()` — reads the INV fault input (or the bench
+  push-button). Fail-safe polarity; the module is the physical safety authority.
+- Demand layer: rule-engine-shaped, min/max threshold logic; **deactivation is
+  evaluated first and wins ties.**
 
-## 5. Ignition state machine (GasBurner)
+## 6. Burner state machine (GasBurner)
 
-| State | Valve | Spark | Meaning |
+| State | INV relay | Gas | Meaning |
 |---|---|---|---|
-| `OFF` | closed | off | Idle, no demand |
-| `IGNITING` | **open** | gated | Ignition trial; waiting for proven flame within the safety time |
-| `RUN` | open | off | Flame proven; regulating temperature |
-| `INTERTRIAL` | closed | off | Gas-closed wait between retries (lets gas dissipate) |
-| `LOCKOUT` | closed | off | Latched after retries exhausted — **manual reset only** |
-| `FAULT` | closed | off | Temperature sensor fault → safe state |
+| `OFF` | open (INV off) | closed | Idle, no demand |
+| `IGNITING` | closed (INV on) | INV controls | INV runs its own sequence; ESP waits for flame confirmation |
+| `RUN` | closed (INV on) | open, flame held by INV | Flame proven; ESP regulating |
+| `LOCKOUT` | open (INV off) | closed | Latched after failure — **manual reset only** |
+| `FAULT` | open (INV off) | closed | Temperature-sensor fault → safe state |
 
 Transitions:
 
 ```
-OFF ──(demand rises)──────────────► IGNITING
-IGNITING ──(flame proven)─────────► RUN
-IGNITING ──(trial timeout, retries left)──► INTERTRIAL ──(delay done)──► IGNITING
-IGNITING ──(trial timeout, no retries left)──► LOCKOUT
-RUN ──(demand falls: temp > max)──► OFF
-RUN ──(flame lost > loss_debounce)──► on_loss = retry → INTERTRIAL
-                                    │            = lockout → LOCKOUT
-LOCKOUT ──(BOOT short press)──────► OFF
-any + temp-sensor fault ──────────► FAULT ──(fault clears)──► OFF
+OFF ──(demand rises: temp < min)──────────────────► IGNITING
+IGNITING ──(no fault for flame_confirm_s)──────────► RUN        (flame considered proven)
+IGNITING ──(fault asserted)────────────────────────► LOCKOUT
+RUN ──(demand falls: temp > max)───────────────────► OFF
+RUN ──(fault asserted: INV failed to hold/relight)─► LOCKOUT
+LOCKOUT ──(BOOT short press)───────────────────────► OFF
+any + temp-sensor fault ───────────────────────────► FAULT ──(fault clears)──► OFF
 ```
 
-### Ignition timing (IGNITING)
+Flame confirmation: the INV signals **failure** (buzzer), not success. So after
+enabling, the ESP considers flame **proven** if **no fault appears within
+`flame_confirm_s`** — which must exceed the INV's ~24s attempt window. A fault at
+any time (ignition or run) drops the burner to `LOCKOUT` and cuts power. There is
+no ESP-level retry: the INV's internal 3 attempts are the retries; if they fail,
+the ESP latches.
 
-`t0` = valve opens.
+## 7. Configuration model
 
-```
-t0 = valve opens
- │
- ├─ spark_offset ∈ [-5s, +5s] ──► spark ON at (t0 + spark_offset), for spark_duration
- │
- ├──────────── trial_for_ignition (safety time) ─────────────►│
- │             (max time gas is open WITHOUT proven flame)     │
- │   ▲ flame proven before the deadline → RUN (spark off, valve stays)
- │   else at the deadline → close valve → INTERTRIAL
-```
-
-`trial_for_ignition` is the hard ceiling on "gas open without flame" and takes
-priority: if `spark_offset` would delay the spark so much that flame can't be
-proven in time, the configuration is invalid (reject on `set`/`save`).
-
-## 6. Configuration model
-
-Persisted as JSON on LittleFS, loaded at boot; schema carries `config_version`
-for future migration.
+Persisted as JSON on LittleFS, loaded at boot; `config_version` for migration.
 
 ```jsonc
 {
   "config_version": 1,
   "heat_source": "gas",            // "gas" | "electric" (reserved, stub)
 
-  "ignition": {
-    "spark_offset_s": 0.0,         // -5.0 .. +5.0, spark start relative to valve open
-    "spark_duration_s": 3.0,       // > 0
-    "trial_for_ignition_s": 5.0,   // > 0, ceiling on gas-open-without-flame
-    "retry_max": 3,                // >= 0
-    "intertrial_delay_s": 10       // >= 0, gas closed between retries
-  },
-
-  "flame_supervision": {
-    "on_loss": "retry",            // "retry" | "lockout"
-    "loss_debounce_ms": 500        // >= 0, absent-signal time before declaring loss
+  "burner": {                      // INV-27109 supervision (ESP side)
+    "flame_confirm_s": 30,         // no fault within this window after enabling => flame proven
+                                   //   (must be >= the INV's ~24s ignition attempt window)
+    "fault_debounce_ms": 200       // debounce for the INV fault (12V buzzer) input
   },
 
   "regulation": {                  // == two rules (activate < min, deactivate > max)
@@ -170,93 +164,132 @@ for future migration.
 }
 ```
 
-Validation (rejected on set/save): `temp_min_c < temp_max_c`; `spark_offset_s`
-in [-5, +5]; positive durations where noted; the spark window must be able to
-prove flame within `trial_for_ignition_s`.
+**Removed vs the pre-INV design** (now internal to the INV-27109, so we don't
+configure them): the whole `ignition` block — `spark_offset_s`,
+`spark_duration_s`, `trial_for_ignition_s`, `retry_max`, `intertrial_delay_s` —
+and `flame_supervision.on_loss` / `loss_debounce_ms`.
 
-## 7. Serial command interface
+Validation (rejected on set/save): `temp_min_c < temp_max_c`;
+`flame_confirm_s` ≥ 25 (must cover the INV attempt window); positive values.
 
-Line-based command grammar over the serial console:
+## 8. Serial command interface
 
 | Command | Effect |
 |---|---|
-| `show` | Print the whole configuration (and current state) |
-| `get <key>` | Print one value, e.g. `get ignition.spark_duration_s` |
+| `show` | Print the whole configuration and current state |
+| `get <key>` | Print one value, e.g. `get regulation.temp_min_c` |
 | `set <key> <value>` | Set one value (validated); in-memory until `save` |
 | `save` | Persist the configuration to LittleFS |
 | `reset lockout` | Clear a latched lockout (equivalent to the BOOT press) |
-| `sim flame on\|off` | **Dry-run only:** drive the fake flame signal |
+| `sim flame on\|off` | **Bench aid:** force the flame/fault input (mirrors the push-button) |
 
-Keys are dotted paths matching the schema (`section.field`). Invalid keys/values
-return an error line and leave the config unchanged.
+Keys are dotted paths matching the schema. Invalid keys/values return an error
+line and leave the config unchanged.
 
-## 8. Safety invariants (non-negotiable)
+## 9. Safety invariants (non-negotiable)
 
-1. **Fail-safe valve:** normally-closed, opens only when energized. Firmware
-   forces all actuator outputs OFF at the very start of `setup()`, before
-   anything else, so reboot/brownout/crash leaves gas closed.
-2. **Watchdog:** if the loop stalls with gas open, the watchdog resets and the
-   valve de-energizes (closes). The cooperative loop must never block in `RUN`.
-3. **`trial_for_ignition` is the ceiling** on gas-open-without-flame and has
-   priority over spark timing.
-4. **Sensor faults fail safe:** a temp-sensor fault (open thermocouple) → `FAULT`
-   with gas closed; **an absent flame signal is always treated as no flame**.
-5. **Lockout is latched** — cleared only by a deliberate human action (BOOT
-   press / `reset lockout`); never by an automatic restart.
-6. **Independent over-temperature cutoff** (`hard_max_temp_c`) shuts the burner
-   regardless of the regulation band, covering a stuck-open valve or a failed
-   loop.
-7. **Mechanical backstop recommended** on the gas line (manual shutoff /
-   mechanical thermostat) — software is not the only protection layer in
-   combustion.
+1. **The INV-27109 must not be the sole safety system** (manufacturer statement).
+   The ESP therefore adds a **master lockout**. An **independent mechanical safety
+   backstop** on the gas line (e.g. a thermocouple safety valve) is strongly
+   recommended at the installation but is **out of scope of this firmware** — it is
+   the integrator's/installer's responsibility (see §12).
+2. **Power-off closes gas:** the enable relay de-energizes the INV, which drops S2
+   (valve closed). The ESP forces the enable output OFF at the very start of
+   `setup()`, so reboot/brownout/crash leaves gas closed.
+3. **Master lockout is latched** — cleared only by a deliberate human action
+   (BOOT press / `reset lockout`); never by automatic restart.
+4. **Galvanic isolation** on the fault read (PC817) — never tie the INV's 12V
+   ground to the ESP ground.
+5. **Fault / absent signal fails safe:** any fault or missing flame signal is
+   treated as no flame; the INV is the physical safety authority, and the ESP's
+   `flame_confirm_s` window is the net if the fault line is lost.
+6. **Watchdog** cuts the enable (closes gas) if the loop stalls; the cooperative
+   loop must never block in `RUN`.
+7. **Independent over-temperature cutoff** (`hard_max_temp_c`) drops the burner
+   regardless of the regulation band.
+8. **Snubber** across the solenoid-valve coil (inductive load on a
+   resistive-rated relay) — protects the INV's S2 contacts and keeps the
+   ionization reading clean.
 
-## 9. Dry-run validation (no real gas)
+## 10. Wiring / I/O
 
-- Valve and spark are relays/LEDs; **no gas connected**.
-- Flame is the serial-driven fake (`sim flame on|off`), exercising
-  `IGNITING → RUN → loss → retry → LOCKOUT` and the timing.
-- Regulation is exercised by heating the real BT thermocouple across the band.
-- Verify: on boot/reset the valve output is de-energized before anything else;
-  watchdog closes "gas" on an induced hang.
+**INV-27109 side** (mains, done by the operator's hardware):
+- N/F 85–250 VAC in — **110 VAC in this build** — fed through the ESP's enable relay.
+- S2 → gas solenoid valve (**110 VAC, normally-closed**) — **RC snubber across the
+  coil**, e.g. ~100Ω + 100nF X2-class.
+- S1 → spark unit ("usina").
+- Ionization electrode → flame-sensor input.
 
-## 10. I/O and pin proposal
+**ESP32 side** (added to `board_config.h`):
 
-New I/O for this phase (added to `board_config.h`):
-
-| Signal | Direction | Proposed pin | Note |
+| Signal | Direction | Pin | Note |
 |---|---|---|---|
-| Gas valve | output | **GPIO25** | reuses the existing "burner relay"; active-LOW, NC valve |
-| Spark generator | output | **GPIO27** | gated on/off |
-| Flame (ionization) | input | **GPIO34** | input-only, ADC1-capable → works as digital or analog (D10) |
+| INV enable | output | **GPIO25** | reuses the former "burner relay"; drives a **mains-rated** relay gating the INV's supply; OFF ⇒ gas closed |
+| INV fault (12V via PC817) | input | **GPIO32** | `INPUT_PULLUP`; **active-LOW** (fault ⇒ LOW); PC817 with a 2.2kΩ LED resistor; bench push-button on the same node |
 
-Existing (unchanged): MAX6675 SCK 18 / SO 19 / CS_BT 5 / CS_ET 17, OLED I2C
-21/22, drum relay 26, BOOT 0. Avoid strapping pins for new outputs.
+PC817 fault read:
+```
+INV 12V (buzzer) ─[2.2kΩ]─►|LED|─┐            ┌─ 3V3 (GPIO internal pull-up)
+                                 │   PC817    │
+INV 12V GND ─────────── LED cathode           ├─► GPIO32
+                        transistor collector ─┘
+                        transistor emitter ───► ESP GND
+  fault active (12V) ⇒ LED on ⇒ transistor on ⇒ GPIO LOW
+```
+Freed by this architecture: the previous separate spark output (GPIO27) and the
+dedicated ionization front-end input — the INV owns both. Unchanged: MAX6675
+(SCK 18 / SO 19 / CS_BT 5 / CS_ET 17), OLED I2C 21/22, drum relay 26, BOOT 0.
+Pin numbers are **provisional** and live in `board_config.h` (easy to change);
+they will be refined when the PCB is designed. For now the goal is the simplest
+wiring that exercises the control flow.
 
-## 11. Open items (hardware / commissioning — do not block firmware design)
+## 11. Dry-run validation (no real gas)
 
-- **H1** — Driver stage and coil voltages (valve, spark module): relay vs SSR,
-  and fail-safe NC wiring.
-- **H2** — Ionization front-end: digital (comparator → GPIO) vs analog (ADC).
-  Deferred behind the `FlameSensor` abstraction (D10).
-- **H3** — Final pin assignment (§10 is a proposal).
-- **C1** — Default timer/retry values (§6 are proposals); tune on the bench.
+- **Firmware-only:** the enable output drives an LED/relay standing in for the
+  INV; the push-button (or `sim flame`) drives the fault/flame input. Exercise
+  `OFF → IGNITING → RUN → fault → LOCKOUT`, `reset lockout`, and the min/max
+  regulation (by heating the real BT thermocouple across the band).
+- **With the real INV, still no gas:** energizing the INV runs its sequence and
+  **faults** (no flame) — this exercises the real fault path, the opto read, and
+  the ESP lockout end-to-end.
+- Verify: on boot/reset the enable output is de-energized before anything else;
+  an induced loop hang cuts the enable (closes "gas") via the watchdog.
 
-## 12. Acceptance criteria (this phase)
+## 12. Decisions & remaining details
+
+**Resolved:**
+- **Mains / valve (H1):** **110 VAC**; the gas solenoid valve is **110 VAC,
+  normally-closed** (already sourced). Enable relay: a mains-rated relay module
+  (~10A / 250VAC), driveable by the ESP.
+- **Fault read (H2):** discrete **PC817** + 2.2kΩ LED resistor (see §10).
+- **Pins (H3):** provisional — enable **GPIO25**, fault **GPIO32**; all pins live
+  in `board_config.h` and are trivial to change. Goal now: the simplest wiring to
+  exercise the flow; refine at PCB design.
+
+**To finalize at the bench / PCB stage:**
+- RC snubber values on the valve coil.
+- Final pin map and driver details when the PCB is designed.
+
+**Explicitly OUT OF SCOPE of this firmware (H4):**
+- The **independent mechanical safety backstop** on the gas line (e.g. a
+  thermocouple safety valve). This firmware/controller **cannot** provide it. It
+  is documented as strongly recommended/required at the installation, but it is
+  the responsibility of the product integrator/installer — **not this software**.
+
+## 13. Acceptance criteria (this phase)
 
 1. Config round-trips to LittleFS and survives reboot; `show`/`get`/`set`/`save`
    work with validation.
-2. On demand (`temp < min`), the ignition sequence runs: valve opens, spark is
-   gated per `spark_offset`/`spark_duration`; simulated flame within
-   `trial_for_ignition` → `RUN` (spark off, valve stays open).
-3. No flame within `trial_for_ignition` → valve closes, waits
-   `intertrial_delay`, retries up to `retry_max`, then `LOCKOUT`.
+2. On demand (`temp < min`), the ESP enables the INV; with no fault within
+   `flame_confirm_s`, the burner reaches `RUN`.
+3. A fault (12V) during ignition or run drops the burner to `LOCKOUT` and cuts the
+   enable (gas closed).
 4. `LOCKOUT` clears only via BOOT short press / `reset lockout`; no auto-restart.
-5. In `RUN`, simulated flame loss beyond `loss_debounce_ms` closes the valve
-   immediately; behavior follows `on_loss`.
-6. Regulation holds the configured sensor within `[temp_min_c, temp_max_c]`;
-   `min_on_time_s`/`min_off_time_s` prevent short-cycling.
-7. `hard_max_temp_c` forces shutdown regardless of the band.
-8. A temp-sensor fault (open thermocouple) drives `FAULT` with the valve closed.
-9. On boot/reset/brownout the valve output is de-energized before anything else;
-   an induced loop hang closes "gas" via the watchdog.
-10. All actuation is dry (relays/LEDs); no real gas is connected.
+5. When demand falls (`temp > max`) the ESP cuts the enable; `min_on_time_s` /
+   `min_off_time_s` prevent short-cycling.
+6. `hard_max_temp_c` forces shutdown regardless of the band.
+7. A temp-sensor fault (open thermocouple) drives `FAULT` with the enable off.
+8. On boot/reset/brownout the enable output is de-energized before anything else;
+   an induced loop hang cuts the enable via the watchdog.
+9. The fault read is opto-isolated; the INV 12V ground is not tied to the ESP.
+10. All actuation is dry (LED/relay + push-button, or the real INV with no gas).

@@ -19,7 +19,7 @@ Single environment (`esp32`); do not introduce a build system other than Platfor
 
 ## What this project is
 
-Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) and air temperature (ET) via 2x MAX6675 (type-K thermocouple, SPI), drives the gas burner (solenoid valve + spark generator, with ionization flame supervision) and a drum-motor relay, and serves a local web interface for operation and configuration. Current phase: **V0 — proof of concept** (real actuators with no gas/load connected). Integration with the Artisan software via MODBUS TCP comes in Phase 3 — do not implement yet.
+Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) and air temperature (ET) via 2x MAX6675 (type-K thermocouple, SPI), commands a dedicated gas flame controller (**Inova INV-27109** — which drives the solenoid valve, spark, and ionization flame sensing) and a drum-motor relay, and serves a local web interface for operation and configuration. The ESP enables the flame controller and supervises it via its fault output. Current phase: **V0 — proof of concept** (real actuators with no gas/load connected). Integration with the Artisan software via MODBUS TCP comes in Phase 3 — do not implement yet.
 
 **Full requirements, features, and acceptance criteria:** `docs/PRD-torrador-esp32-v0.md`. Consult before implementing any feature.
 
@@ -68,13 +68,13 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 - Shared SPI between the two MAX6675 (same SCK/SO), individual CS.
 - Common relay modules are **active-LOW** — confirm the module's polarity before assuming HIGH=on.
 
-**Gas burner / flame safety** (see `docs/design-flame-control.md`):
-- Gas is open ONLY while flame is proven, or during a bounded ignition trial (`trial_for_ignition`) — this ceiling has priority over spark timing.
-- The gas valve is **fail-safe**: normally-closed, opens only when energized. Force all actuator outputs OFF at the very start of `setup()`, before anything else.
-- Flame is supervised by an ionization sensor behind a `FlameSensor` abstraction; an **absent or faulted flame signal is ALWAYS treated as no flame**.
-- After retries are exhausted, latch a **LOCKOUT** that clears only by deliberate human action (BOOT short press) — never by automatic restart.
-- Independent over-temperature cutoff (`hard_max_temp_c`) shuts the burner regardless of the regulation band; a **watchdog** must close gas if the loop stalls.
-- This phase runs **DRY**: relays/LEDs as actuators, no real gas; flame simulated over serial.
+**Gas burner / flame safety** (see `docs/design-flame-control.md`; controller manual `docs/manuals/Manual_INV_27109v9.1.pdf`):
+- Combustion is delegated to a dedicated flame controller (**Inova INV-27109**): it drives the spark and gas valve, senses flame by ionization, and closes gas on flame loss. The ESP does NOT drive the valve/spark directly.
+- The ESP **enables** the controller by power-gating its mains supply through a relay; **power off ⇒ gas closes** (fail-safe). Force the enable output OFF at the very start of `setup()`, before anything else.
+- The ESP reads the controller's fault output (12V buzzer) through a **PC817 optocoupler** — galvanic isolation; never tie the 12V ground to the ESP ground.
+- The INV-27109 does **not** latch, and its manual states it **must not be used alone as a safety system**. Therefore the ESP implements a **master LOCKOUT** (cut power, refuse to re-enable until a BOOT short press). An independent mechanical safety backstop on the gas line is strongly recommended at installation but is **out of scope of this firmware** (integrator's responsibility).
+- Any fault/absent flame signal is treated as no flame; a **watchdog** cuts the enable (closes gas) if the loop stalls; `hard_max_temp_c` is an independent over-temperature cutoff.
+- This phase runs **DRY**: no real gas; the fault/flame input is exercised with a push-button (or the real INV, which faults with no gas).
 
 ## Network provisioning (PRD F6)
 
@@ -93,7 +93,7 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 | Deactivation priority on ties | Thermal safety |
 | ESP32-only (ESP8266 dropped) | Simpler build/code; dual-core + RAM for simultaneous web + MODBUS in Phase 3 |
 | White-label branding, compile-time | One codebase, many manufacturers; per-build identity with no runtime cost |
-| Gas burner: ionization sensing, direct single-valve ignition, fail-safe | Flame proven fast/reliably; simplest safe topology; see `docs/design-flame-control.md` (ADR) |
+| Gas burner: delegate combustion to Inova INV-27109; ESP enables + supervises (fault via PC817 opto); ESP-level lockout + mechanical backstop | Purpose-built controller does ignition/ionization/valve safely; simpler firmware; safer for a commercial product; see `docs/design-flame-control.md` |
 
 ## Open (decide during implementation, ask if relevant)
 

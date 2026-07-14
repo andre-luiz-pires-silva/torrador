@@ -19,9 +19,11 @@ Single environment (`esp32`); do not introduce a build system other than Platfor
 
 ## What this project is
 
-Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) and air temperature (ET) via 2x MAX6675 (type-K thermocouple, SPI), drives 2 relays (burner and drum motor), and serves a local web interface for operation and configuration. Current phase: **V0 — proof of concept** (real relays with no load connected). Integration with the Artisan software via MODBUS TCP comes in Phase 3 — do not implement yet.
+Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) and air temperature (ET) via 2x MAX6675 (type-K thermocouple, SPI), drives the gas burner (solenoid valve + spark generator, with ionization flame supervision) and a drum-motor relay, and serves a local web interface for operation and configuration. Current phase: **V0 — proof of concept** (real actuators with no gas/load connected). Integration with the Artisan software via MODBUS TCP comes in Phase 3 — do not implement yet.
 
 **Full requirements, features, and acceptance criteria:** `docs/PRD-torrador-esp32-v0.md`. Consult before implementing any feature.
+
+**Gas burner control (ignition, flame supervision, min/max hold):** `docs/design-flame-control.md` — the design & ADR for the current development phase. Consult before touching burner/flame/ignition code.
 
 ## Language policy
 
@@ -66,6 +68,14 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 - Shared SPI between the two MAX6675 (same SCK/SO), individual CS.
 - Common relay modules are **active-LOW** — confirm the module's polarity before assuming HIGH=on.
 
+**Gas burner / flame safety** (see `docs/design-flame-control.md`):
+- Gas is open ONLY while flame is proven, or during a bounded ignition trial (`trial_for_ignition`) — this ceiling has priority over spark timing.
+- The gas valve is **fail-safe**: normally-closed, opens only when energized. Force all actuator outputs OFF at the very start of `setup()`, before anything else.
+- Flame is supervised by an ionization sensor behind a `FlameSensor` abstraction; an **absent or faulted flame signal is ALWAYS treated as no flame**.
+- After retries are exhausted, latch a **LOCKOUT** that clears only by deliberate human action (BOOT short press) — never by automatic restart.
+- Independent over-temperature cutoff (`hard_max_temp_c`) shuts the burner regardless of the regulation band; a **watchdog** must close gas if the loop stalls.
+- This phase runs **DRY**: relays/LEDs as actuators, no real gas; flame simulated over serial.
+
 ## Network provisioning (PRD F6)
 
 - No saved credentials -> AP mode `Torrador-Setup` (IP `192.168.4.1`) + captive portal. AP SSID is `{Brand}-Setup`, derived from the branding config (`Torrador-Setup` for the default brand).
@@ -83,6 +93,7 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 | Deactivation priority on ties | Thermal safety |
 | ESP32-only (ESP8266 dropped) | Simpler build/code; dual-core + RAM for simultaneous web + MODBUS in Phase 3 |
 | White-label branding, compile-time | One codebase, many manufacturers; per-build identity with no runtime cost |
+| Gas burner: ionization sensing, direct single-valve ignition, fail-safe | Flame proven fast/reliably; simplest safe topology; see `docs/design-flame-control.md` (ADR) |
 
 ## Open (decide during implementation, ask if relevant)
 

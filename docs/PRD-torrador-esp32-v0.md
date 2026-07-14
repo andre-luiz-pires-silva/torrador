@@ -76,6 +76,7 @@ V0 is a **proof of concept** to validate the integration of the ESP32 with the r
 - In automatic mode, manual buttons are disabled and the rule engine takes control
 
 #### F4 — Configurable rule engine (automatic mode)
+> The gas-burner refinement of this feature (ignition sequence, flame supervision, and the min/max temperature hold as the two-threshold subset of this engine) is specified in `docs/design-flame-control.md`.
 - **Two independent instances**: one for the burner relay, one for the drum relay
 - Each instance has two independent rules:
   - **Activation rule** (when to turn the relay on)

@@ -8,6 +8,9 @@
 //
 // Target board: ESP32-WROOM. Keep pin numbers and board includes confined to
 // this file so the rest of the codebase stays hardware-agnostic.
+//
+// This file is the single source of truth for pin numbers. Physical wiring /
+// connection tables live in docs/hardware/wiring.md — keep them in sync.
 // -----------------------------------------------------------------------------
 
 #include <Arduino.h>
@@ -33,7 +36,9 @@ static const uint8_t PIN_MAX6675_CS_ET = 17;  // air/exhaust temperature (ET) ch
 static const uint8_t PIN_OLED_SDA      = 21;  // I2C data
 static const uint8_t PIN_OLED_SCL      = 22;  // I2C clock
 
-// Relays (active-LOW) and provisioning button — used from later steps on.
-static const uint8_t PIN_RELAY_BURNER  = 25;  // burner relay (active-LOW)
+// Gas flame controller (INV-27109) interface, drum relay, provisioning button.
+static const uint8_t PIN_INV_ENABLE    = 25;  // enables INV-27109 via mains relay; bench: LED indicator
+static const uint8_t PIN_FLAME_FAULT   = 32;  // INV fault via PC817 (active-LOW in final HW); bench: push-button (active-high)
+static const uint8_t PIN_START_STOP    = 33;  // process start/stop toggle button (bench); active-high
 static const uint8_t PIN_RELAY_DRUM    = 26;  // drum motor relay (active-LOW)
-static const uint8_t PIN_BOOT_BUTTON   = 0;   // BOOT button — WiFi credential reset
+static const uint8_t PIN_BOOT_BUTTON   = 0;   // BOOT button — lockout reset / WiFi credential reset

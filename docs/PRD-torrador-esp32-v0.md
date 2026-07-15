@@ -27,28 +27,22 @@ The firmware is **white-label**: the same codebase is sold to multiple manufactu
 ### 1.1 Product goal
 Develop an electronic controller for a gas coffee roaster, based on ESP32, capable of:
 1. Monitoring process temperatures (bean mass and air) in real time
-2. Driving the burner and drum motor manually or automatically (configurable rule engine)
+2. Driving the burner and drum motor manually or automatically (simple min/max temperature control)
 3. Providing a local web interface for operation and configuration
 4. (Future phases) Integrating with the Artisan software via MODBUS TCP
 
 ### 1.2 V0 scope
-V0 is a **proof of concept** to validate the integration of the ESP32 with the roaster. It **does not include** Artisan integration (Phase 3). It focuses on: real sensors, real relays (no load connected), web interface, rule engine, and AP-based network provisioning.
+V0 is a **proof of concept** to validate the integration of the ESP32 with the roaster. It **does not include** Artisan integration (Phase 3). It focuses on: real sensors, real relays (no load connected), web interface, min/max temperature control, and AP-based network provisioning.
 
-### 1.2.1 Platform strategy (ESP8266 -> ESP32)
-- **Final target:** ESP32 (WROOM)
-- **Initial development:** ESP8266 (hardware already available), with a compatibility layer for the whole ESP family
-- **Build tool:** PlatformIO with two environments (`esp8266` and `esp32`), resolving environment-specific dependencies (ESPAsyncTCP vs. AsyncTCP)
-- **Portability rules:**
-  1. No ESP32-exclusive APIs (explicit FreeRTOS tasks, pinned cores) — single cooperative loop
-  2. Conserve RAM as if always on ESP8266 (pages served from LittleFS, not from RAM strings)
-  3. Board-specific pins and WiFi/mDNS includes centralized in a single `board_config.h` with `#ifdef ESP32 / #else`
-- Migrating to ESP32 must require only switching the build environment, with no logic changes
+### 1.2.1 Platform
+- **Target:** ESP32 (WROOM), single board. Built with PlatformIO (one `esp32` environment; async transport `AsyncTCP`).
+- **Code structure:** a single cooperative loop (no explicit FreeRTOS tasks); web pages served from LittleFS, not from RAM strings; all pins and board includes centralized in `board_config.h`.
 
 ### 1.3 Phase roadmap
 
 | Phase | Goal | Hardware |
 |---|---|---|
-| **Phase 1 (V0, current)** | Validate control logic, rule engine, and web interface on a protoboard | ESP32 + 2x MAX6675 (real probes) + 2x relay module **with no load connected** |
+| **Phase 1 (V0, current)** | Validate control logic, temperature control, and web interface on a protoboard | ESP32 + 2x MAX6675 (real probes) + 2x relay module **with no load connected** |
 | **Phase 2** | Connect real loads to the already-validated relays | Solenoid valve (burner) + drum motor |
 | **Phase 3** | Artisan integration | MODBUS TCP server on top of the validated base |
 
@@ -73,26 +67,20 @@ V0 is a **proof of concept** to validate the integration of the ESP32 with the r
 #### F3 — Manual / automatic mode
 - **Single toggle** that switches the whole system between manual and automatic
 - The toggle affects **both relays simultaneously** (no mixed mode)
-- In automatic mode, manual buttons are disabled and the rule engine takes control
+- In automatic mode, manual buttons are disabled and the min/max temperature control takes control
 
-#### F4 — Configurable rule engine (automatic mode)
-> The gas-burner refinement of this feature (ignition sequence, flame supervision, and the min/max temperature hold as the two-threshold subset of this engine) is specified in `docs/design-flame-control.md`.
-- **Two independent instances**: one for the burner relay, one for the drum relay
-- Each instance has two independent rules:
-  - **Activation rule** (when to turn the relay on)
-  - **Deactivation rule** (when to turn the relay off)
-- Each rule is composed of:
-  - A list of **conditions** (minimum 1, **maximum 5**)
-  - A **logical operator** (AND or OR) combining all conditions of the rule
-- Each condition contains:
-  - **Sensor:** BT or ET
-  - **Comparator:** `<` or `>`
-  - **Value:** temperature in °C
-- **Tie priority:** if the activation and deactivation rules are both satisfied in the same cycle, **deactivation always wins** (safety first)
+#### F4 — Temperature control (automatic mode)
+> The gas-burner behaviour behind this feature (ignition, flame supervision, and the min/max regulation) is specified in `docs/design-flame-control.md`.
+- Simple **min/max temperature band on BT**:
+  - Below **min** → demand heat (burner on).
+  - Above **max** → stop (burner off), with hysteresis between the two thresholds.
+- If **min/max are not both configured**, the burner stays **on directly** (no thermostat).
+- **Off always wins:** reaching max, a flame fault, STOP, or a sensor fault always turns the burner off.
+- The drum relay is a plain on/off output (no temperature logic).
 
 #### F5 — Configuration persistence
-- Configured rules are saved to **LittleFS** and survive ESP restart/power-off
-- On startup, the firmware automatically loads the saved rules
+- The configured min/max temperatures are saved to **LittleFS** and survive ESP restart/power-off
+- On startup, the firmware automatically loads the saved settings
 
 #### F6 — Network provisioning (AP configuration mode)
 "IP camera" pattern: with no display or keyboard, network configuration is done by connecting to a Wi-Fi network created by the device itself. **Custom implementation** (not WiFiManager) — reuses the ESPAsyncWebServer and LittleFS already present in the project and keeps a visual identity consistent with the operation interface.
@@ -127,8 +115,7 @@ POWER ON
 | **Dashboard** | Real-time BT and ET reading; current state of both relays (on/off); current mode indicator (manual/automatic) |
 | **Manual control** | On/off button for the burner relay; on/off button for the drum relay (enabled only in manual mode) |
 | **Mode** | Single manual/automatic toggle |
-| **Rules — Burner** | Editor for the activation rule and the deactivation rule: list of conditions (sensor + comparator + value), AND/OR selector, "add condition" button (limit: 5) |
-| **Rules — Drum** | Same structure as the burner editor, fully independent |
+| **Temperature** | Set the min and max temperatures (°C) for the burner band; leave blank to keep the flame on directly |
 
 *(Note: user-facing labels are in Portuguese (BR) for V0 per the Language Policy; the table above describes function in English.)*
 
@@ -146,7 +133,7 @@ POWER ON
 
 | Component | Qty | Function | Notes |
 |---|---|---|---|
-| ESP32 (WROOM) — final target | 1 | Central controller | Chosen over ESP8266 for dual-core and ~520KB RAM — needed for async web server + control logic simultaneously (and MODBUS in Phase 3). **Initial development on ESP8266** (available hardware) with a compatibility layer — see section 1.2.1 |
+| ESP32 (WROOM) | 1 | Central controller | Dual-core and ~520KB RAM for the async web server + control logic simultaneously (and MODBUS in Phase 3) — see section 1.2.1 |
 | MAX6675 (breakout) | 2 | Type-K thermocouple -> digital converter | SPI; range 0–1024°C; resolution 0.25°C; ~1 read every 220ms. Conscious decision to keep MAX6675 (simplicity) instead of MAX31855 (which would add thermocouple fault detection) — revisit in the future |
 | Type-K thermocouple probe | 2 | BT: long/immersion probe in the mass; ET: short probe/air | Verify probe stem length compatible with the drum before purchasing |
 | Relay module | 2 | Relay #1: burner; Relay #2: drum motor | In V0, **no load connected to the contacts** — the module's own indicator LED serves as visual feedback |
@@ -163,46 +150,32 @@ POWER ON
 **Main modules:**
 
 1. **Sensor reading:** periodic read cycle of the two MAX6675 via SPI (respecting the chip's ~220ms minimum interval)
-2. **Rule engine:** evaluation per read cycle, for each relay:
+2. **Temperature control:** min/max hysteresis on BT per read cycle:
    ```
-   1. Evaluate DEACTIVATION rule
-      If satisfied -> turn relay off, end cycle (ignore activation rule)
-   2. Otherwise, evaluate ACTIVATION rule
-      If satisfied -> turn relay on
-   3. If none satisfied -> keep current relay state
+   If min/max not both set -> demand heat (flame direct)
+   Else:  BT <= min -> demand heat;  BT >= max -> stop;  in between -> keep state
+   Off always wins (max reached, flame fault, STOP, sensor fault -> burner off)
    ```
 3. **Web server:** ESPAsyncWebServer + async TCP (async — mandatory so as not to block the other tasks)
-4. **File system:** LittleFS for (a) interface static files (HTML/CSS/JS) and (b) rule persistence
+4. **File system:** LittleFS for (a) interface static files (HTML/CSS/JS) and (b) settings persistence (min/max)
 5. **mDNS:** ESPmDNS library, registering `torrador.local`
 6. **Network provisioning:** AP + captive portal state machine (see F6)
 
-**Rule data structure (logical model):**
+**Configuration (logical model):**
 ```
-RelayConfig = {
-  activation_rule: Rule,
-  deactivation_rule: Rule
+TemperatureConfig = {
+  temp_min_c: number | null,   // null = not configured
+  temp_max_c: number | null    // temp_min_c < temp_max_c
 }
-
-Rule = {
-  operator: "AND" | "OR",
-  conditions: [           // 1 to 5 items
-    {
-      sensor: "BT" | "ET",
-      comparator: "<" | ">",
-      value: number (°C)
-    }
-  ]
-}
-
-// Two instances: burnerRelay and drumRelay, fully independent
+// Either unset => burner stays on directly (flame direct)
 ```
 
 **Global system state:**
 ```
 {
   mode: "manual" | "automatic",   // single toggle, affects both relays
-  burnerRelay: { state: bool, config: RelayConfig },
-  drumRelay:   { state: bool, config: RelayConfig },
+  burner:    { state: bool, config: TemperatureConfig },
+  drumRelay: { state: bool },     // plain on/off
   bt: float,   // last reading (°C)
   et: float    // last reading (°C)
 }
@@ -219,8 +192,8 @@ Rule = {
 | `/relay/{burner\|drum}/on` | POST | Turn relay on manually (manual mode only) |
 | `/relay/{burner\|drum}/off` | POST | Turn relay off manually (manual mode only) |
 | `/mode` | POST | Toggle manual/automatic (single toggle) |
-| `/rules/{burner\|drum}` | GET | Return the relay's current rules (JSON) |
-| `/rules/{burner\|drum}` | POST | Save rules (activation + deactivation) and persist to LittleFS |
+| `/config/temperature` | GET | Return the current min/max (JSON) |
+| `/config/temperature` | POST | Save min/max (or clear) and persist to LittleFS |
 | `/network/reset` | POST | Erase network credentials and restart in configuration mode (AP) |
 
 **Configuration mode (AP):**
@@ -289,13 +262,12 @@ Rule = {
 1. Web interface reachable at `http://torrador.local` from a computer and phone on the same network
 2. Dashboard displays BT and ET in real time, with plausible values from the real probes
 3. In manual mode, each relay turns on/off via its corresponding button (feedback visible on the module LED)
-4. In automatic mode, each relay responds to its configured rules, with deactivation prevailing on ties
-5. Rules with up to 5 conditions and an AND/OR operator can be created, edited, and saved per relay
-6. Rules persist after restarting the ESP
+4. In automatic mode, the burner follows the min/max band on BT (off always wins); with min/max unset, the flame stays on directly
+5. The min and max temperatures can be set, cleared, and saved
+6. The min/max settings persist after restarting the ESP
 7. The single toggle switches manual/automatic for both relays simultaneously
 8. With no saved credentials, the device comes up in AP mode (`Torrador-Setup`) and the captive portal opens the configuration page automatically when connecting from a phone
 9. After saving SSID/password in the portal, the device restarts and connects to the configured network
 10. Connection failure after timeout automatically returns to AP mode; the physical boot button and a web interface option also reset the network configuration
-11. The firmware compiles and runs on both ESP8266 and ESP32 from the same code, changing only the build environment (PlatformIO)
-12. User-facing interface text is in Portuguese (BR), with strings structured to allow future English localization
-13. The product name is not hardcoded: it comes from the branding config, and changing it (plus rebuilding) updates the web UI, serial boot banner, mDNS default hostname, and AP SSID (white-label, per §0.2)
+11. User-facing interface text is in Portuguese (BR), with strings structured to allow future English localization
+12. The product name is not hardcoded: it comes from the branding config, and changing it (plus rebuilding) updates the web UI, serial boot banner, mDNS default hostname, and AP SSID (white-label, per §0.2)

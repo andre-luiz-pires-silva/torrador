@@ -38,15 +38,14 @@ it is **outside the scope of this firmware/controller** (see §9 and §12).
 - ESP **enables** the controller by power-gating its mains supply through a relay.
 - ESP **supervises** via the controller's 12V fault output, read through a
   **PC817 optocoupler**; latched master lockout on failure.
-- Min/max temperature hold, expressed as the two-threshold subset of the rule
-  engine.
+- Simple **min/max** temperature regulation on BT (below min → heat, above max →
+  stop). If min/max are not set, the burner stays on directly.
 - Serial command interface for configuration and lockout reset.
 - **Dry run** — no real gas connected; the fault/flame input exercised with a
   push-button (or the real INV, which faults with no gas).
 
 **Out of scope (this phase)**
 - Electric resistive heat source (reserved only).
-- Full rule engine (5 conditions, AND/OR) — only the min/max subset now.
 - Flame modulation / time-proportioning (Phase 3).
 - Web UI for configuration (serial only this phase).
 - Ignition timing / purge parameters — these live **inside the INV-27109** and
@@ -79,15 +78,14 @@ it is **outside the scope of this firmware/controller** (see §9 and §12).
 | D4 | Control the INV by **power-gating its mains via a relay** (it has no enable input) | The INV runs when energized; the ESP relay is the call-for-heat and a hard master cutoff — **power off ⇒ gas closes**. |
 | D5 | Read the INV fault (12V buzzer) via a **PC817 optocoupler** | Galvanic isolation from the mains-referenced 12V; clean 3.3V logic to the ESP. |
 | D6 | **ESP-level master LOCKOUT**; reset via BOOT short press | The INV does not latch and its manual says it must not be the sole safety system. The ESP latches and refuses to re-enable until manual reset. |
-| D7 | Regulation sensor **configurable, default BT** | Only BT is wired today; keep it a config field so ET can be selected later. |
-| D8 | Min/max band is the **two-threshold subset of the rule engine** | One demand model: activation `temp < min`, deactivation `temp > max`; deactivation wins ties. |
-| D9 | Configuration via **serial command grammar** | Scriptable, easy to extend/log; web UI later. |
-| D10 | Independent mechanical safety backstop — **out of scope** of this FW/controller (installer's responsibility) | Manufacturer says the INV must not be the sole safety system; a mechanical backstop is strongly recommended at installation, but this software cannot provide it. Documented, not implemented. |
+| D7 | Temperature regulation is a simple **min/max** band on **BT** | Below min → demand heat; above max → stop (hysteresis). If min/max are not both set, the burner stays on directly. Deliberately minimal — no rule engine, no BT/ET selection. |
+| D8 | Configuration via **serial commands** (`min` / `max` / `show`) | Simple and scriptable; runtime now, LittleFS persistence later; web UI later. |
+| D9 | Independent mechanical safety backstop — **out of scope** of this FW/controller (installer's responsibility) | Manufacturer says the INV must not be the sole safety system; a mechanical backstop is strongly recommended at installation, but this software cannot provide it. Documented, not implemented. |
 
 ## 5. Architecture & abstractions
 
 ```
-temperature ─► [ demand layer / rule engine (min<->max) ] ─► burner demand (bool)
+temperature ─► [ min/max regulation on BT ] ─► burner demand (bool)
                                                                    │
                                                                    ▼
                                         [ HeatSource: GasBurner (thin supervisor) ]
@@ -96,46 +94,49 @@ temperature ─► [ demand layer / rule engine (min<->max) ] ─► burner dema
 ```
 
 - `HeatSource`: `request(bool on)`, `tick()`, `State state()`.
-  - `GasBurner` is now a **thin supervisor**: it enables the INV, watches the
-    fault line, applies the confirmation window, and latches the lockout.
+  - `GasBurner` is now a **thin supervisor**: it enables the INV (optimistically —
+    no ignition/confirm step), watches the fault line, and latches the lockout.
   - `ElectricHeater` — reserved **stub** (a relay + its own over-temp cutoff).
 - `FlameSensor`: `bool fault()` — reads the INV fault input (or the bench
   push-button). Fail-safe polarity; the module is the physical safety authority.
-- Demand layer: rule-engine-shaped, min/max threshold logic; **deactivation is
-  evaluated first and wins ties.**
+- Regulation: a simple min/max hysteresis on BT; if min/max are not configured,
+  demand is always true (flame direct). Turning **OFF** (max reached, a fault, or
+  STOP) always takes precedence.
 
 ## 6. Burner state machine (GasBurner)
 
-| State | INV relay | Gas | Meaning |
-|---|---|---|---|
-| `OFF` | open (INV off) | closed | Idle, no demand |
-| `IGNITING` | closed (INV on) | INV controls | INV runs its own sequence; ESP waits for flame confirmation |
-| `RUN` | closed (INV on) | open, flame held by INV | Flame proven; ESP regulating |
-| `LOCKOUT` | open (INV off) | closed | Latched after failure — **manual reset only** |
-| `FAULT` | open (INV off) | closed | Temperature-sensor fault → safe state |
+| State | INV relay | Meaning |
+|---|---|---|
+| `IDLE` | open (INV off) | Process off / idle |
+| `RUN` | closed (INV on) | Process on, burner firing (optimistic — flame assumed lit) |
+| `HOLD` | open (INV off) | Process on, temperature satisfied (≥ max) — not firing |
+| `LOCKOUT` | open (INV off) | Latched after a fault — **manual reset only** |
+| `FAULT` | open (INV off) | Temperature-sensor fault → safe state |
 
 Transitions:
 
 ```
-OFF ──(demand rises: temp < min)──────────────────► IGNITING
-IGNITING ──(no fault for flame_confirm_s)──────────► RUN        (flame considered proven)
-IGNITING ──(fault asserted)────────────────────────► LOCKOUT
-RUN ──(demand falls: temp > max)───────────────────► OFF
-RUN ──(fault asserted: INV failed to hold/relight)─► LOCKOUT
-LOCKOUT ──(BOOT short press)───────────────────────► OFF
-any + temp-sensor fault ───────────────────────────► FAULT ──(fault clears)──► OFF
+IDLE ──(process START; demand)──────────► RUN
+IDLE ──(process START; temp satisfied)──► HOLD
+RUN  ──(fault asserted by INV)──────────► LOCKOUT
+RUN  ──(demand falls: temp > max)───────► HOLD
+RUN/HOLD ──(process STOP)───────────────► IDLE
+HOLD ──(demand rises: temp < min)───────► RUN
+LOCKOUT ──(BOOT short press)────────────► IDLE
+any + temp-sensor fault ────────────────► FAULT ──(fault clears)──► IDLE
 ```
 
-Flame confirmation: the INV signals **failure** (buzzer), not success. So after
-enabling, the ESP considers flame **proven** if **no fault appears within
-`flame_confirm_s`** — which must exceed the INV's ~24s attempt window. A fault at
-any time (ignition or run) drops the burner to `LOCKOUT` and cuts power. There is
-no ESP-level retry: the INV's internal 3 attempts are the retries; if they fail,
-the ESP latches.
+**Optimistic ignition:** the ESP does **not** wait to confirm flame — as soon as it
+enables the INV it considers the burner firing (`RUN`). The INV owns ignition and
+flame supervision; if it fails, its fault signal drives `RUN → LOCKOUT`. This keeps
+the firmware simple and fits a future electric heat source (just switch it on).
+There is no ESP-level retry — the INV's internal 3 attempts are the retries.
 
 ## 7. Configuration model
 
-Persisted as JSON on LittleFS, loaded at boot; `config_version` for migration.
+Target: a JSON config on LittleFS (`config_version` for migration). The current
+firmware implements only the **min/max** part, set over serial at runtime;
+LittleFS persistence is a planned follow-up.
 
 ```jsonc
 {
@@ -143,18 +144,12 @@ Persisted as JSON on LittleFS, loaded at boot; `config_version` for migration.
   "heat_source": "gas",            // "gas" | "electric" (reserved, stub)
 
   "burner": {                      // INV-27109 supervision (ESP side)
-    "flame_confirm_s": 30,         // no fault within this window after enabling => flame proven
-                                   //   (must be >= the INV's ~24s ignition attempt window)
     "fault_debounce_ms": 200       // debounce for the INV fault (12V buzzer) input
   },
 
-  "regulation": {                  // == two rules (activate < min, deactivate > max)
-    "enabled": true,
-    "sensor": "BT",                // "BT" | "ET"
-    "temp_min_c": 190,             // temp_min_c < temp_max_c
-    "temp_max_c": 205,
-    "min_on_time_s": 15,           // anti short-cycling
-    "min_off_time_s": 15
+  "regulation": {                  // simple min/max band on BT; unset => flame direct
+    "temp_min_c": null,            // °C; null = not configured
+    "temp_max_c": null             // temp_min_c < temp_max_c
   },
 
   "safety": {
@@ -164,27 +159,20 @@ Persisted as JSON on LittleFS, loaded at boot; `config_version` for migration.
 }
 ```
 
-**Removed vs the pre-INV design** (now internal to the INV-27109, so we don't
-configure them): the whole `ignition` block — `spark_offset_s`,
-`spark_duration_s`, `trial_for_ignition_s`, `retry_max`, `intertrial_delay_s` —
-and `flame_supervision.on_loss` / `loss_debounce_ms`.
-
-Validation (rejected on set/save): `temp_min_c < temp_max_c`;
-`flame_confirm_s` ≥ 25 (must cover the INV attempt window); positive values.
+Validation (rejected on set): `temp_min_c < temp_max_c`. Either unset ⇒ flame direct.
 
 ## 8. Serial command interface
 
 | Command | Effect |
 |---|---|
-| `show` | Print the whole configuration and current state |
-| `get <key>` | Print one value, e.g. `get regulation.temp_min_c` |
-| `set <key> <value>` | Set one value (validated); in-memory until `save` |
-| `save` | Persist the configuration to LittleFS |
-| `reset lockout` | Clear a latched lockout (equivalent to the BOOT press) |
-| `sim flame on\|off` | **Bench aid:** force the flame/fault input (mirrors the push-button) |
+| `show` | Print the min/max config and current state |
+| `min <c>` | Set the minimum temperature (°C) |
+| `max <c>` | Set the maximum temperature (°C) |
+| `min -` / `max -` | Clear a value (unset ⇒ flame direct) |
 
-Keys are dotted paths matching the schema. Invalid keys/values return an error
-line and leave the config unchanged.
+Invalid input returns an error line and leaves the config unchanged. The LOCKOUT
+is cleared with the **BOOT** button. (More commands and LittleFS persistence are
+planned follow-ups.)
 
 ## 9. Safety invariants (non-negotiable)
 
@@ -197,12 +185,12 @@ line and leave the config unchanged.
    (valve closed). The ESP forces the enable output OFF at the very start of
    `setup()`, so reboot/brownout/crash leaves gas closed.
 3. **Master lockout is latched** — cleared only by a deliberate human action
-   (BOOT press / `reset lockout`); never by automatic restart.
+   (BOOT press); never by automatic restart.
 4. **Galvanic isolation** on the fault read (PC817) — never tie the INV's 12V
    ground to the ESP ground.
 5. **Fault / absent signal fails safe:** any fault or missing flame signal is
-   treated as no flame; the INV is the physical safety authority, and the ESP's
-   `flame_confirm_s` window is the net if the fault line is lost.
+   treated as no flame; the INV is the physical safety authority — it closes gas on
+   flame loss regardless of what the ESP reads.
 6. **Watchdog** cuts the enable (closes gas) if the loop stalls; the cooperative
    loop must never block in `RUN`.
 7. **Independent over-temperature cutoff** (`hard_max_temp_c`) drops the burner
@@ -245,9 +233,9 @@ wiring that exercises the control flow.
 
 ## 11. Dry-run validation (no real gas)
 
-- **Firmware-only:** the enable output drives an LED/relay standing in for the
-  INV; the push-button (or `sim flame`) drives the fault/flame input. Exercise
-  `OFF → IGNITING → RUN → fault → LOCKOUT`, `reset lockout`, and the min/max
+- **Firmware-only:** the enable output drives an LED standing in for the INV; the
+  push-buttons drive the process (START/STOP) and the fault/flame input. Exercise
+  `IDLE → RUN ⇄ HOLD`, a fault → `LOCKOUT` → BOOT reset, and the min/max
   regulation (by heating the real BT thermocouple across the band).
 - **With the real INV, still no gas:** energizing the INV runs its sequence and
   **faults** (no flame) — this exercises the real fault path, the opto read, and
@@ -278,15 +266,14 @@ wiring that exercises the control flow.
 
 ## 13. Acceptance criteria (this phase)
 
-1. Config round-trips to LittleFS and survives reboot; `show`/`get`/`set`/`save`
-   work with validation.
-2. On demand (`temp < min`), the ESP enables the INV; with no fault within
-   `flame_confirm_s`, the burner reaches `RUN`.
+1. Min/max are set over serial (`min`/`max`/`show`); unset ⇒ the burner stays on
+   directly and the display shows "-".
+2. On demand (`temp < min` or unset), the ESP enables the INV and the burner goes
+   to `RUN` immediately (optimistic); a later fault drops it to `LOCKOUT`.
 3. A fault (12V) during ignition or run drops the burner to `LOCKOUT` and cuts the
    enable (gas closed).
-4. `LOCKOUT` clears only via BOOT short press / `reset lockout`; no auto-restart.
-5. When demand falls (`temp > max`) the ESP cuts the enable; `min_on_time_s` /
-   `min_off_time_s` prevent short-cycling.
+4. `LOCKOUT` clears only via the BOOT button; no auto-restart.
+5. When demand falls (`temp > max`) the ESP cuts the enable (back to `HOLD`).
 6. `hard_max_temp_c` forces shutdown regardless of the band.
 7. A temp-sensor fault (open thermocouple) drives `FAULT` with the enable off.
 8. On boot/reset/brownout the enable output is de-energized before anything else;

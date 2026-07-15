@@ -25,6 +25,8 @@ Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) 
 
 **Gas burner control (ignition, flame supervision, min/max hold):** `docs/design-flame-control.md` — the design & ADR for the current development phase. Consult before touching burner/flame/ignition code.
 
+**Hardware wiring (connection tables, BOM, isolation boundary):** `docs/hardware/wiring.md`. `board_config.h` is the pin authority; keep the wiring doc in sync.
+
 ## Language policy
 
 - **Code and system documentation: English is the default language.** All identifiers, code comments, commit messages, technical docs (PRD, this file, ADRs), and internal artifacts are written in English.
@@ -61,8 +63,8 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 
 ## Critical domain rules (safety)
 
-- Rule engine: 2 independent instances (burner and drum), each with an activation rule and a deactivation rule (up to 5 conditions each, AND/OR operator, conditions over BT/ET with `<`/`>`).
-- **Evaluation order per cycle: deactivation is ALWAYS evaluated first and ALWAYS wins ties.** This is a thermal-safety requirement, not an implementation detail.
+- Temperature regulation is a simple **min/max band on BT** (below min → demand heat; above max → stop, with hysteresis). If min/max are not both configured, the burner stays on directly. No rule engine, no BT/ET selection — deliberately minimal.
+- **Turning the burner OFF always takes precedence** (max reached, flame fault, STOP, or sensor fault). This is a thermal-safety requirement, not an implementation detail.
 - The manual/automatic toggle is **single** and affects both relays simultaneously. In automatic mode, manual relay commands are rejected.
 - MAX6675: minimum ~220ms interval between reads of the same chip — respect this in the read cycle.
 - Shared SPI between the two MAX6675 (same SCK/SO), individual CS.
@@ -90,7 +92,8 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 | Plain HTTP, no HTTPS | Local network; TLS costs RAM/CPU; Chrome warnings don't affect private IPs |
 | Custom provisioning (not WiFiManager) | Reuses async stack + single visual identity |
 | Single manual/auto toggle (not per relay) | Product decision |
-| Deactivation priority on ties | Thermal safety |
+| Burner-off always takes precedence (max/fault/stop) | Thermal safety |
+| Simple min/max temperature control (no rule engine) | Minimal for V0; flexible rules dropped; re-evaluate later if needed |
 | ESP32-only (ESP8266 dropped) | Simpler build/code; dual-core + RAM for simultaneous web + MODBUS in Phase 3 |
 | White-label branding, compile-time | One codebase, many manufacturers; per-build identity with no runtime cost |
 | Gas burner: delegate combustion to Inova INV-27109; ESP enables + supervises (fault via PC817 opto); ESP-level lockout + mechanical backstop | Purpose-built controller does ignition/ionization/valve safely; simpler firmware; safer for a commercial product; see `docs/design-flame-control.md` |

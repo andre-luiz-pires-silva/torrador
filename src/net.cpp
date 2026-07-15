@@ -33,20 +33,81 @@ NetCommand netTakeCommand() {
 
 // --- Route handlers -----------------------------------------------------------
 
-// Bootstrap the portal: brand name (never hardcoded — white-label rule) plus the
-// persisted network config so the form reflects what's saved. AP password is
-// returned too — acceptable in V0 (local UI over the device's own link).
+// Brand name for any page (never hardcoded — white-label rule).
 static void handleBrand(AsyncWebServerRequest *req) {
   AsyncResponseStream *res = req->beginResponseStream("application/json");
   JsonDocument doc;
-  doc["name"]        = BRAND_NAME;
-  doc["ap_ssid"]     = BRAND_AP_SSID;
-  doc["mode"]        = netModeName(config.network.mode);
-  doc["ssid"]        = config.network.ssid;        // STA target ("" if none)
-  doc["ap_password"] = config.network.apPassword;
-  doc["mdns"]        = config.network.mdnsHost;
+  doc["name"] = BRAND_NAME;
   serializeJson(doc, *res);
   req->send(res);
+}
+
+// Full settings bootstrap: brand + operation + network, so the settings page can
+// prefill every field. AP password is returned too — acceptable in V0 (local UI
+// over the device's own link).
+static void handleConfig(AsyncWebServerRequest *req) {
+  AsyncResponseStream *res = req->beginResponseStream("application/json");
+  JsonDocument doc;
+  doc["name"] = BRAND_NAME;
+
+  JsonObject op = doc["operation"].to<JsonObject>();
+  op["mode"] = modeName(config.mode);
+  float mn = config.manual.temperature.minC, mx = config.manual.temperature.maxC;
+  if (isnan(mn)) op["min_c"] = nullptr; else op["min_c"] = mn;
+  if (isnan(mx)) op["max_c"] = nullptr; else op["max_c"] = mx;
+
+  JsonObject nw = doc["network"].to<JsonObject>();
+  nw["mode"]        = netModeName(config.network.mode);
+  nw["ssid"]        = config.network.ssid;
+  nw["ap_ssid"]     = BRAND_AP_SSID;
+  nw["ap_password"] = config.network.apPassword;
+  nw["mdns"]        = config.network.mdnsHost;
+
+  serializeJson(doc, *res);
+  req->send(res);
+}
+
+// Save operation config (control mode + BT band). Applies live — the control
+// loop reads config each iteration — so no reboot. Empty min/max clears the band.
+static void handleOperation(AsyncWebServerRequest *req) {
+  auto reject = [&](const char *why) {
+    AsyncResponseStream *r = req->beginResponseStream("application/json");
+    r->setCode(400);
+    JsonDocument d; d["ok"] = false; d["error"] = why;
+    serializeJson(d, *r); req->send(r);
+  };
+
+  // Validate everything into locals first; only mutate config once it all passes.
+  Mode desired = config.mode;
+  if (req->hasParam("mode", true)) {
+    if (!parseMode(req->getParam("mode", true)->value().c_str(), desired)) { reject("mode"); return; }
+  }
+
+  float nmin = config.manual.temperature.minC;
+  float nmax = config.manual.temperature.maxC;
+  auto readTemp = [&](const char *name, float &dst) -> bool {
+    if (!req->hasParam(name, true)) return true;   // absent => keep current
+    String v = req->getParam(name, true)->value(); v.trim();
+    if (!v.length() || v == "-") { dst = NAN; return true; }   // blank => clear
+    char *end; double f = strtod(v.c_str(), &end);
+    if (end == v.c_str()) return false;
+    dst = (float)f; return true;
+  };
+  if (!readTemp("min", nmin)) { reject("min"); return; }
+  if (!readTemp("max", nmax)) { reject("max"); return; }
+  if (!isnan(nmin) && !isnan(nmax) && nmin >= nmax) { reject("range"); return; }
+  // AUTO regulates on the band, so both limits are required.
+  if (desired == Mode::AUTO && (isnan(nmin) || isnan(nmax))) { reject("band"); return; }
+
+  config.mode = desired;
+  config.manual.temperature.minC = nmin;
+  config.manual.temperature.maxC = nmax;
+  bool ok = configSave();
+  Serial.print(F("[net] operation saved: mode=")); Serial.println(modeName(config.mode));
+
+  AsyncResponseStream *res = req->beginResponseStream("application/json");
+  JsonDocument doc; doc["ok"] = ok;
+  serializeJson(doc, *res); req->send(res);
 }
 
 // Visible Wi-Fi networks. Non-blocking: a synchronous scan would stall the
@@ -189,13 +250,18 @@ static void setupRoutes() {
     req->send(LittleFS, "/index.html", "text/html");     // home dashboard
   });
   server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *req) {
-    req->send(LittleFS, "/portal.html", "text/html");    // network settings
+    req->send(LittleFS, "/portal.html", "text/html");    // settings (operation + network)
   });
-  server.on("/brand",   HTTP_GET,  handleBrand);
-  server.on("/status",  HTTP_GET,  handleStatus);
-  server.on("/command", HTTP_POST, handleCommand);
-  server.on("/scan",    HTTP_GET,  handleScan);
-  server.on("/save",    HTTP_POST, handleSave);
+  server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *req) {
+    req->send(LittleFS, "/style.css", "text/css");        // shared UI system
+  });
+  server.on("/brand",     HTTP_GET,  handleBrand);
+  server.on("/config",    HTTP_GET,  handleConfig);
+  server.on("/status",    HTTP_GET,  handleStatus);
+  server.on("/command",   HTTP_POST, handleCommand);
+  server.on("/operation", HTTP_POST, handleOperation);
+  server.on("/scan",      HTTP_GET,  handleScan);
+  server.on("/save",      HTTP_POST, handleSave);
   // Anything else (incl. OS captive-portal probes) -> bounce to the portal.
   server.onNotFound([](AsyncWebServerRequest *req) {
     req->redirect("http://192.168.4.1/");

@@ -3,198 +3,172 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Configuração de rede</title>
-  <style>
-    /* Single high-contrast light theme — no prefers-color-scheme, so captive
-       portal webviews can't apply it half-way (dark text on white). */
-    * { box-sizing: border-box; }
-    html, body { margin: 0; }
-    body {
-      min-height: 100vh;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-      color: #1f2937; background: #f7f8fa;
-      -webkit-text-size-adjust: 100%;
-    }
-    /* Minimalist: content flows directly on the page, no card wrapper. */
-    .wrap { max-width: 22rem; margin: 0 auto; padding: 1.25rem; }
-    .back {
-      display: inline-block; margin-bottom: 1rem;
-      color: #6b7280; text-decoration: none; font-size: .9rem; font-weight: 600;
-    }
-    .back:active { color: #111827; }
-    h1 { font-size: 1.2rem; font-weight: 700; margin: 0; color: #111827; line-height: 1.2; }
-    .sub { margin: .15rem 0 1rem; color: #6b7280; font-size: .85rem; }
-
-    label {
-      display: block; margin: 1rem 0 .35rem;
-      font-size: .8rem; font-weight: 600; color: #374151;
-      letter-spacing: .01em;
-    }
-    input {
-      width: 100%; padding: .7rem .8rem;
-      font-size: 1rem; color: #111827;
-      background: #fff;
-      border: 1.5px solid #d1d5db; border-radius: 10px;
-      transition: border-color .15s, box-shadow .15s;
-    }
-    input::placeholder { color: #9ca3af; }
-    input:focus {
-      outline: none; border-color: #d97706;
-      box-shadow: 0 0 0 3px rgba(217,119,6,.18);
-    }
-
-    .row { display: flex; gap: .5rem; align-items: flex-end; }
-    .row > div { flex: 1; min-width: 0; }
-
-    /* Segmented AP/STA mode control */
-    .seg {
-      display: flex; gap: .3rem; background: #eef2f7;
-      padding: .3rem; border-radius: 12px;
-    }
-    .seg-opt { flex: 1; margin: 0; }
-    .seg-opt input { position: absolute; opacity: 0; pointer-events: none; }
-    .seg-opt span {
-      display: block; text-align: center; padding: .55rem .4rem;
-      font-size: .85rem; font-weight: 600; color: #4b5563;
-      border-radius: 9px; cursor: pointer; transition: background .15s, color .15s;
-    }
-    .seg-opt input:checked + span {
-      background: #fff; color: #111827; box-shadow: 0 1px 2px rgba(16,24,40,.12);
-    }
-    .hint { margin: .7rem 0 0; font-size: .82rem; color: #6b7280; line-height: 1.35; }
-    section[hidden] { display: none; }
-
-    button {
-      font-family: inherit; font-weight: 600; cursor: pointer;
-      border: 0; border-radius: 10px;
-      transition: background .15s, opacity .15s;
-    }
-    .btn-scan {
-      flex: 0 0 auto; padding: .7rem .9rem; font-size: .9rem;
-      background: #eef2f7; color: #374151; border: 1.5px solid #d1d5db;
-    }
-    .btn-scan:active { background: #e2e8f0; }
-    .btn-save {
-      width: 100%; margin-top: 1.5rem; padding: .85rem;
-      font-size: 1rem; color: #fff; background: #d97706;
-    }
-    .btn-save:active { background: #b45309; }
-    button:disabled { opacity: .55; cursor: default; }
-
-    #status { margin-top: 1rem; font-size: .88rem; min-height: 1.2rem; color: #6b7280; }
-    #status.ok  { color: #15803d; font-weight: 600; }
-    #status.err { color: #b91c1c; font-weight: 600; }
-
-    .netlist {
-      margin-top: .6rem; display: flex; flex-direction: column; gap: .3rem;
-      max-height: 13rem; overflow-y: auto;
-    }
-    .net {
-      display: flex; align-items: center; justify-content: space-between; gap: .6rem;
-      width: 100%; text-align: left; padding: .6rem .75rem;
-      background: #f8fafc; border: 1.5px solid #e5e7eb; border-radius: 10px;
-      font-size: .95rem; color: #111827;
-    }
-    .net:active { background: #eef2f7; }
-    .net.sel { border-color: #d97706; background: #fff7ed; }
-    .net .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .net .meta { flex: 0 0 auto; display: flex; align-items: center; gap: .4rem;
-                 color: #6b7280; font-size: .85rem; letter-spacing: .05em; }
-  </style>
+  <title>Configurações</title>
+  <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <main class="wrap">
-    <a class="back" href="/">← Início</a>
-    <h1 id="title">Configuração de rede</h1>
-    <p class="sub" id="subtitle">Conecte o torrador à sua rede Wi-Fi.</p>
+    <div class="topbar start">
+      <a class="iconbtn" href="/" aria-label="Voltar" title="Início" style="margin-left:-.5rem">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 18l-6-6 6-6"/>
+        </svg>
+      </a>
+      <h1>Configurações</h1>
+    </div>
 
-    <form id="form">
-      <div class="seg">
-        <label class="seg-opt">
-          <input type="radio" name="mode" value="ap" id="mode-ap">
-          <span>Rede do Torrador</span>
-        </label>
-        <label class="seg-opt">
-          <input type="radio" name="mode" value="sta" id="mode-sta">
-          <span>Rede existente</span>
-        </label>
-      </div>
-      <p class="hint" id="hint"></p>
+    <div class="tabs" role="tablist">
+      <button class="tab" id="tab-op"  role="tab" aria-selected="true"  aria-controls="panel-op">Operação</button>
+      <button class="tab" id="tab-net" role="tab" aria-selected="false" aria-controls="panel-net">Rede</button>
+    </div>
 
-      <!-- AP mode: the device is its own access point -->
-      <section id="sec-ap">
-        <label for="ap_password">Senha do ponto de acesso</label>
-        <input id="ap_password" name="ap_password" type="text" autocomplete="off"
-               placeholder="mínimo 8 caracteres">
-      </section>
-
-      <!-- STA mode: join an existing Wi-Fi -->
-      <section id="sec-sta">
-        <div class="row">
-          <div>
-            <label for="ssid">Rede (SSID)</label>
-            <input id="ssid" name="ssid" autocomplete="off" placeholder="Nome da rede">
+    <!-- ===================== OPERAÇÃO ===================== -->
+    <section class="section" id="panel-op" role="tabpanel" aria-labelledby="tab-op">
+      <form class="form" id="form-op">
+        <div class="field">
+          <label>Modo de controle</label>
+          <div class="seg" id="ctrlmode">
+            <label><input type="radio" name="mode" value="manual"><span>Manual</span></label>
+            <label><input type="radio" name="mode" value="auto"><span>Automático</span></label>
+            <label><input type="radio" name="mode" value="artisan"><span>Artisan</span></label>
           </div>
-          <button type="button" id="scan" class="btn-scan">Procurar</button>
+          <p class="hint" id="ctrl-hint"></p>
         </div>
-        <div id="networks" class="netlist"></div>
 
-        <label for="password">Senha da rede</label>
-        <input id="password" name="password" type="password" autocomplete="off"
-               placeholder="Senha da rede Wi-Fi">
-      </section>
+        <div class="field" id="op-auto" hidden>
+          <label>Banda de temperatura (BT)</label>
+          <div class="row2">
+            <input id="min" name="min" type="number" inputmode="decimal" step="1" placeholder="Mín °C">
+            <input id="max" name="max" type="number" inputmode="decimal" step="1" placeholder="Máx °C">
+          </div>
+          <p class="hint">Deixe em branco para o queimador seguir direto o Iniciar/Parar.</p>
+        </div>
 
-      <label for="mdns">Nome na rede (mDNS)</label>
-      <input id="mdns" name="mdns" autocomplete="off" placeholder="ex.: torrador">
+        <button type="submit" class="btn block ember" id="save-op">Salvar</button>
+        <p class="status" id="op-status"></p>
+      </form>
+    </section>
 
-      <button type="submit" id="save" class="btn-save">Salvar e reiniciar</button>
-    </form>
+    <!-- ===================== REDE ===================== -->
+    <section class="section" id="panel-net" role="tabpanel" aria-labelledby="tab-net" hidden>
+      <form class="form" id="form-net">
+        <div class="field">
+          <label>Modo de rede</label>
+          <div class="seg" id="netmode">
+            <label><input type="radio" name="mode" value="ap"><span>Rede do Torrador</span></label>
+            <label><input type="radio" name="mode" value="sta"><span>Rede existente</span></label>
+          </div>
+          <p class="hint" id="net-hint"></p>
+        </div>
 
-    <div id="status"></div>
+        <!-- AP -->
+        <div class="field" id="sec-ap">
+          <label for="ap_password">Senha do ponto de acesso</label>
+          <input id="ap_password" name="ap_password" type="text" autocomplete="off"
+                 placeholder="mínimo 8 caracteres">
+        </div>
+
+        <!-- STA -->
+        <div id="sec-sta" class="form">
+          <div class="row-scan">
+            <div class="field">
+              <label for="ssid">Rede (SSID)</label>
+              <input id="ssid" name="ssid" autocomplete="off" placeholder="Nome da rede">
+            </div>
+            <button type="button" id="scan" class="btn ghost small">Procurar</button>
+          </div>
+          <div id="networks" class="netlist"></div>
+          <div class="field">
+            <label for="password">Senha da rede</label>
+            <input id="password" name="password" type="password" autocomplete="off"
+                   placeholder="Senha da rede Wi-Fi">
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="mdns">Nome na rede (mDNS)</label>
+          <input id="mdns" name="mdns" autocomplete="off" placeholder="ex.: torrador">
+        </div>
+
+        <button type="submit" class="btn block ember" id="save-net">Salvar e reiniciar</button>
+        <p class="status" id="net-status"></p>
+      </form>
+    </section>
   </main>
 
   <script>
     const $ = (id) => document.getElementById(id);
-    const status = $('status');
-
-    // Brand name for messaging; AP SSID for reconnect hints. Filled from /brand.
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     let brandName = 'torrador';
     let apSsid = 'Torrador';
 
-    // Show the fields for the chosen mode and an explanatory hint.
-    function setMode(mode) {
+    /* ---------- Tabs ---------- */
+    function selectTab(which) {
+      const op = which === 'op';
+      $('tab-op').setAttribute('aria-selected', op);
+      $('tab-net').setAttribute('aria-selected', !op);
+      $('panel-op').hidden = !op;
+      $('panel-net').hidden = op;
+    }
+    $('tab-op').addEventListener('click', () => selectTab('op'));
+    $('tab-net').addEventListener('click', () => selectTab('net'));
+
+    /* ---------- Operation: control-mode hint ---------- */
+    const CTRL_HINTS = {
+      manual:  'O operador liga e desliga o queimador com Iniciar/Parar.',
+      auto:    'O queimador regula sozinho pela banda de temperatura abaixo.',
+      artisan: 'Controlado pelo software Artisan via MODBUS (fase 3).',
+    };
+    function ctrlChanged() {
+      const sel = document.querySelector('#ctrlmode input:checked');
+      const v = sel ? sel.value : 'manual';
+      $('ctrl-hint').textContent = CTRL_HINTS[v] || '';
+      // Mode-specific fields: the band belongs to Automático. Other modes get
+      // their own sections here as they are developed.
+      $('op-auto').hidden = (v !== 'auto');
+    }
+    document.querySelectorAll('#ctrlmode input').forEach(r =>
+      r.addEventListener('change', ctrlChanged));
+
+    /* ---------- Network: mode toggle ---------- */
+    function setNetMode(mode) {
       const ap = mode !== 'sta';
-      $('mode-ap').checked = ap;
-      $('mode-sta').checked = !ap;
+      $('netmode').querySelector('input[value="ap"]').checked = ap;
+      $('netmode').querySelector('input[value="sta"]').checked = !ap;
       $('sec-ap').hidden = !ap;
       $('sec-sta').hidden = ap;
-      $('hint').textContent = ap
+      $('net-hint').textContent = ap
         ? 'O ' + brandName + ' cria a própria rede Wi-Fi (' + apSsid + '). Conecte seu '
           + 'celular ou computador nela para operar — não precisa de internet no local.'
         : 'O ' + brandName + ' se conecta a uma rede Wi-Fi existente.';
     }
-    $('mode-ap').addEventListener('change', () => setMode('ap'));
-    $('mode-sta').addEventListener('change', () => setMode('sta'));
+    document.querySelectorAll('#netmode input').forEach(r =>
+      r.addEventListener('change', () => setNetMode(r.value)));
 
-    // Brand + saved config come from the firmware, never hardcoded here.
-    fetch('/brand').then(r => r.json()).then(b => {
-      if (!b) return;
-      if (b.name) {
-        brandName = b.name;
-        document.title = b.name + ' — Configuração de rede';
-        $('title').textContent = b.name;
-        $('subtitle').textContent = 'Configuração de rede do ' + b.name + '.';
-      }
-      if (b.ap_ssid) apSsid = b.ap_ssid;
-      if (b.ap_password) $('ap_password').value = b.ap_password;
-      if (b.mdns) $('mdns').value = b.mdns;
-      if (b.ssid) $('ssid').value = b.ssid;
-      setMode(b.mode || 'ap');
-    }).catch(() => setMode('ap'));
+    /* ---------- Load current config ---------- */
+    fetch('/config').then(r => r.json()).then(c => {
+      if (!c) return;
+      if (c.name) { brandName = c.name; }
+      const op = c.operation || {};
+      const on = c.network || {};
+      if (on.ap_ssid) apSsid = on.ap_ssid;
 
-    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+      // operation
+      const cm = document.querySelector('#ctrlmode input[value="' + (op.mode || 'manual') + '"]');
+      if (cm) cm.checked = true;
+      if (op.min_c !== null && op.min_c !== undefined) $('min').value = op.min_c;
+      if (op.max_c !== null && op.max_c !== undefined) $('max').value = op.max_c;
+      ctrlChanged();
 
-    // Wi-Fi waves icon; arcs fill blue by RSSI (dBm) strength, rest stay grey.
+      // network
+      if (on.ap_password) $('ap_password').value = on.ap_password;
+      if (on.mdns) $('mdns').value = on.mdns;
+      if (on.ssid) $('ssid').value = on.ssid;
+      setNetMode(on.mode || 'ap');
+    }).catch(() => setNetMode('ap'));
+
+    /* ---------- Wi-Fi scan ---------- */
     function wifiIcon(rssi) {
       const level = rssi >= -60 ? 3 : rssi >= -70 ? 2 : rssi >= -78 ? 1 : 0;
       const on = '#2563eb', off = '#cbd5e1';
@@ -205,22 +179,16 @@
         + '<path d="M9.3 15.7a4 4 0 0 1 5.4 0" stroke="' + c(1) + '" stroke-width="2" stroke-linecap="round"/>'
         + '<circle cx="12" cy="18.6" r="1.4" fill="#2563eb"/></svg>';
     }
-
     function renderNets(nets) {
-      const box = $('networks');
-      box.innerHTML = '';
+      const box = $('networks'); box.innerHTML = '';
       nets.forEach(n => {
         const row = document.createElement('button');
         row.type = 'button'; row.className = 'net';
-
         const name = document.createElement('span');
         name.className = 'name'; name.textContent = n.ssid;
-
         const meta = document.createElement('span');
         meta.className = 'meta';
-        // Lock (if protected) + waves icon. No user data here, so innerHTML is safe.
         meta.innerHTML = (n.enc ? '🔒' : '') + wifiIcon(n.rssi);
-
         row.append(name, meta);
         row.addEventListener('click', () => {
           $('ssid').value = n.ssid;
@@ -231,13 +199,11 @@
         box.appendChild(row);
       });
     }
-
+    const netStatus = $('net-status');
     $('scan').addEventListener('click', async () => {
-      const btn = $('scan');
-      btn.disabled = true; btn.textContent = '…';
-      status.className = ''; status.textContent = 'Procurando redes…';
+      const btn = $('scan'); btn.disabled = true; btn.textContent = '…';
+      netStatus.className = 'status'; netStatus.textContent = 'Procurando redes…';
       try {
-        // The firmware scans asynchronously; poll until it stops "scanning".
         let data;
         for (let i = 0; i < 15; i++) {
           data = await (await fetch('/scan')).json();
@@ -245,66 +211,91 @@
           await sleep(1000);
         }
         if (!data || data.scanning) throw new Error('timeout');
-
-        // Strongest first, drop hidden/empty, keep one entry per SSID.
         const seen = new Set();
         const nets = (data.networks || [])
           .filter(n => n.ssid)
           .sort((a, b) => b.rssi - a.rssi)
           .filter(n => !seen.has(n.ssid) && seen.add(n.ssid));
-
         renderNets(nets);
-        status.className = '';
-        status.textContent = nets.length
+        netStatus.textContent = nets.length
           ? nets.length + ' rede(s) encontrada(s). Toque para selecionar.'
           : 'Nenhuma rede encontrada.';
       } catch (e) {
-        status.className = 'err'; status.textContent = 'Falha ao procurar redes.';
+        netStatus.className = 'status err'; netStatus.textContent = 'Falha ao procurar redes.';
       } finally {
         btn.disabled = false; btn.textContent = 'Procurar';
       }
     });
 
-    const fail = (msg) => { status.className = 'err'; status.textContent = msg; };
-
-    $('form').addEventListener('submit', async (ev) => {
+    /* ---------- Save: operation (applies live, no reboot) ---------- */
+    const opStatus = $('op-status');
+    $('form-op').addEventListener('submit', async (ev) => {
       ev.preventDefault();
-      const mode = $('mode-sta').checked ? 'sta' : 'ap';
+      const mode = document.querySelector('#ctrlmode input:checked').value;
+      const min = $('min').value.trim(), max = $('max').value.trim();
+      if (mode === 'auto' && (min === '' || max === '')) {
+        opStatus.className = 'status err';
+        opStatus.textContent = 'No modo Automático, defina a faixa mínima e máxima.';
+        return;
+      }
+      if (min !== '' && max !== '' && parseFloat(min) >= parseFloat(max)) {
+        opStatus.className = 'status err';
+        opStatus.textContent = 'A mínima precisa ser menor que a máxima.';
+        return;
+      }
+      const btn = $('save-op'); btn.disabled = true;
+      opStatus.className = 'status'; opStatus.textContent = 'Salvando…';
+      try {
+        const body = new URLSearchParams(new FormData($('form-op')));
+        const res = await (await fetch('/operation', { method: 'POST', body })).json();
+        if (!res || !res.ok) throw new Error(res && res.error);
+        location.href = '/';                       // back to home after saving
+      } catch (e) {
+        opStatus.className = 'status err'; opStatus.textContent = 'Falha ao salvar. Tente novamente.';
+        btn.disabled = false;
+      }
+    });
 
-      // Client-side checks (mirrored on the firmware). AP password validated in
-      // both modes since it always applies; done here to avoid the hidden-field
-      // constraint-validation focus bug.
+    /* ---------- Save: network (reboots to apply) ---------- */
+    $('form-net').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const mode = $('netmode').querySelector('input:checked').value;
       if ($('ap_password').value.length < 8) {
-        setMode('ap'); $('ap_password').focus();
-        return fail('A senha do ponto de acesso precisa de ao menos 8 caracteres.');
+        setNetMode('ap'); $('ap_password').focus();
+        netStatus.className = 'status err';
+        netStatus.textContent = 'A senha do ponto de acesso precisa de ao menos 8 caracteres.';
+        return;
       }
       if (mode === 'sta' && !$('ssid').value.trim()) {
         $('ssid').focus();
-        return fail('Informe a rede (SSID) para conectar.');
+        netStatus.className = 'status err';
+        netStatus.textContent = 'Informe a rede (SSID) para conectar.';
+        return;
       }
-
-      const btn = $('save'); btn.disabled = true;
-      status.className = ''; status.textContent = 'Salvando…';
+      const btn = $('save-net'); btn.disabled = true;
+      netStatus.className = 'status'; netStatus.textContent = 'Salvando…';
       try {
-        const body = new URLSearchParams(new FormData($('form')));
+        const body = new URLSearchParams(new FormData($('form-net')));
         const res = await (await fetch('/save', { method: 'POST', body })).json();
         if (!res || !res.ok) {
-          const why = res && res.error === 'ap_pw'
+          netStatus.className = 'status err';
+          netStatus.textContent = res && res.error === 'ap_pw'
             ? 'A senha do ponto de acesso precisa de ao menos 8 caracteres.'
             : 'Falha ao salvar. Tente novamente.';
           btn.disabled = false;
-          return fail(why);
+          return;
         }
-        status.className = 'ok';
+        netStatus.className = 'status ok';
         const mdns = ($('mdns').value.trim() || 'torrador') + '.local';
-        status.textContent = mode === 'sta'
+        netStatus.textContent = mode === 'sta'
           ? 'Salvo! O ' + brandName + ' vai reiniciar e conectar-se a "' + $('ssid').value
             + '". Depois acesse http://' + mdns + ' nessa rede.'
           : 'Salvo! O ' + brandName + ' vai reiniciar. Reconecte-se à rede "' + apSsid
             + '" com a nova senha.';
       } catch (e) {
+        netStatus.className = 'status err';
+        netStatus.textContent = 'Falha ao salvar. Tente novamente.';
         btn.disabled = false;
-        fail('Falha ao salvar. Tente novamente.');
       }
     });
   </script>

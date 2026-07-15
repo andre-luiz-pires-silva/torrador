@@ -7,8 +7,25 @@ Config config;
 
 static const char *CONFIG_PATH = "/config.json";
 
+const char *modeName(Mode m) {
+  switch (m) {
+    case Mode::MANUAL:  return "manual";
+    case Mode::AUTO:    return "auto";
+    case Mode::ARTISAN: return "artisan";
+  }
+  return "manual";
+}
+
+bool parseMode(const char *s, Mode &out) {
+  if (strcmp(s, "manual") == 0)  { out = Mode::MANUAL;  return true; }
+  if (strcmp(s, "auto") == 0)    { out = Mode::AUTO;    return true; }
+  if (strcmp(s, "artisan") == 0) { out = Mode::ARTISAN; return true; }
+  return false;
+}
+
 // --- Serialization (one block per group; extend as groups are added) ---
 static void toJson(JsonDocument &doc) {
+  doc["mode"] = modeName(config.mode);
   // manual mode
   JsonObject manual = doc["manual"].to<JsonObject>();
   JsonObject t = manual["temperature"].to<JsonObject>();
@@ -19,6 +36,9 @@ static void toJson(JsonDocument &doc) {
 }
 
 static void fromJson(JsonDocument &doc) {
+  Mode m;
+  config.mode = parseMode(doc["mode"] | "", m) ? m : Mode::MANUAL;
+
   JsonVariant minC = doc["manual"]["temperature"]["min_c"];
   JsonVariant maxC = doc["manual"]["temperature"]["max_c"];
   config.manual.temperature.minC = minC.isNull() ? NAN : minC.as<float>();

@@ -13,6 +13,17 @@
 // then extend the (de)serialization in config.cpp. Unset temperatures use NAN.
 // -----------------------------------------------------------------------------
 
+// --- Active control authority (who owns the heat demand) ---
+//   MANUAL  — the operator drives START/STOP directly (default)
+//   AUTO    — the ESP's own min/max regulator owns the demand
+//   ARTISAN — the Artisan software owns the demand via MODBUS (Phase 3)
+// In AUTO and ARTISAN the front push button acts as an emergency stop.
+enum class Mode : uint8_t { MANUAL, AUTO, ARTISAN };
+
+// Mode <-> its lowercase name ("manual" / "auto" / "artisan").
+const char *modeName(Mode m);
+bool parseMode(const char *s, Mode &out);
+
 // --- Temperature regulation (min/max band on BT) ---
 struct TemperatureConfig {
   float minC = NAN;   // NaN = not configured
@@ -32,6 +43,7 @@ struct ArtisanConfig {
 
 // --- Root configuration ---
 struct Config {
+  Mode          mode = Mode::MANUAL;   // active control authority (default MANUAL)
   ManualConfig  manual;
   ArtisanConfig artisan;
 };

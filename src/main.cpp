@@ -47,7 +47,7 @@ static bool btnUpdate(Button &b, uint32_t now) {
 }
 
 // ---- State ----
-enum class State { IDLE, RUN, HOLD, LOCKOUT, FAULT };
+enum class State { IDLE, RUN, HOLD, LOCKOUT, ESTOP, FAULT };
 static State state = State::IDLE;
 static bool  processOn = false;
 static bool  demand = false;
@@ -62,6 +62,7 @@ static const char *stateName(State s) {
     case State::RUN:     return "RUN";
     case State::HOLD:    return "HOLD";
     case State::LOCKOUT: return "LOCKOUT";
+    case State::ESTOP:   return "ESTOP";
     case State::FAULT:   return "FAULT";
   }
   return "?";
@@ -91,6 +92,7 @@ static void fmtTemp(char *out, size_t n, float v) {
 }
 
 static void printConfig() {
+  Serial.print(F("[cfg] mode=")); Serial.println(modeName(config.mode));
   char sMin[8], sMax[8];
   fmtTemp(sMin, sizeof(sMin), config.manual.temperature.minC);
   fmtTemp(sMax, sizeof(sMax), config.manual.temperature.maxC);
@@ -107,6 +109,16 @@ static bool handleLine(char *line) {
   char *arg = strtok(NULL, " \t");
 
   if (strcmp(cmd, "show") == 0) { printConfig(); return true; }
+
+  if (strcmp(cmd, "mode") == 0) {
+    if (!arg) { Serial.println(F("[cfg] usage: mode manual|auto|artisan")); return false; }
+    Mode m;
+    if (!parseMode(arg, m)) { Serial.println(F("[cfg] error: mode manual|auto|artisan")); return false; }
+    config.mode = m;
+    configSave();
+    printConfig();
+    return true;
+  }
 
   if (strcmp(cmd, "min") == 0 || strcmp(cmd, "max") == 0) {
     bool isMin = (cmd[1] == 'i');
@@ -134,7 +146,7 @@ static bool handleLine(char *line) {
     return true;
   }
 
-  Serial.println(F("[cfg] commands: show | min <c> | max <c> | min - | max -"));
+  Serial.println(F("[cfg] commands: show | mode manual|auto|artisan | min <c> | max <c> | min - | max -"));
   return false;
 }
 
@@ -168,6 +180,9 @@ static void renderScreen() {
 
   display.setFont(u8g2_font_helvB08_tf);
   drawCentered(BRAND_NAME, 10);
+  display.setFont(u8g2_font_4x6_tf);
+  const char *mn = modeName(config.mode);
+  display.drawUTF8(128 - display.getUTF8Width(mn), 6, mn);
   display.drawHLine(0, 13, 128);
 
   display.setFont(u8g2_font_7x13_tf);
@@ -182,6 +197,7 @@ static void renderScreen() {
     case State::RUN:     st = "Aquecendo";    break;
     case State::HOLD:    st = "Temp. OK";     break;
     case State::LOCKOUT: st = "FALHA — BOOT"; break;
+    case State::ESTOP:   st = "EMERG. — BOOT"; break;
     case State::FAULT:   st = "Sensor BT!";   break;
     default:             st = "";             break;
   }
@@ -228,7 +244,7 @@ void setup() {
 
   Serial.println();
   Serial.println(F("[torrador] boot ok — burner control (bench)"));
-  Serial.println(F("[torrador] serial: show | min <c> | max <c> | min - | max -"));
+  Serial.println(F("[torrador] serial: show | mode manual|auto|artisan | min <c> | max <c> | min - | max -"));
   printConfig();
 
   delay(300);
@@ -256,9 +272,15 @@ void loop() {
   }
   bool sensorFault = isnan(lastTempC);
 
-  // ---- Demand: min/max hysteresis; flame-direct when not configured ----
-  if (!config.manual.temperature.configured()) {
-    demand = true;
+  // ---- Demand source, by mode ----
+  //   MANUAL  : flame follows START directly (min/max band ignored)
+  //   AUTO    : min/max hysteresis on BT (flame-direct if the band is unset)
+  //   ARTISAN : owned by Artisan over MODBUS (Phase 3) — no source yet
+  bool band = (config.mode == Mode::AUTO) && config.manual.temperature.configured();
+  if (config.mode == Mode::ARTISAN) {
+    demand = false;                                            // Phase 3: Artisan will drive this
+  } else if (!band) {
+    demand = true;                                            // MANUAL, or AUTO without a band
   } else if (!sensorFault) {
     if (lastTempC <= config.manual.temperature.minC)      demand = true;
     else if (lastTempC >= config.manual.temperature.maxC) demand = false;
@@ -268,14 +290,30 @@ void loop() {
   State prev = state;
 
   // ---- Global pre-empts ----
-  if (bootEdge && state == State::LOCKOUT) { state = State::IDLE; processOn = false; }
-  if (sensorFault && state != State::LOCKOUT) { state = State::FAULT; processOn = false; }
+  // BOOT clears a latched safety stop (INV-fault lockout or Artisan e-stop).
+  if (bootEdge && (state == State::LOCKOUT || state == State::ESTOP)) {
+    state = State::IDLE; processOn = false;
+  }
+  // Sensor fault fails safe, except while latched (LOCKOUT/ESTOP need BOOT).
+  if (sensorFault && state != State::LOCKOUT && state != State::ESTOP) {
+    state = State::FAULT; processOn = false;
+  }
 
-  if (startEdge && state != State::LOCKOUT && state != State::FAULT) {
-    processOn = !processOn;
-    Serial.print(F("[torrador] process "));
-    Serial.println(processOn ? F("START") : F("STOP"));
-    if (!processOn) state = State::IDLE;
+  if (config.mode == Mode::ARTISAN) {
+    // The button is a latched EMERGENCY STOP: cut the INV now, block re-enable
+    // (logic or Artisan) until a BOOT short press releases it.
+    if (startEdge && state != State::ESTOP) {
+      state = State::ESTOP; processOn = false;
+      Serial.println(F("[torrador] EMERGENCY STOP"));
+    }
+  } else {
+    // MANUAL / AUTO: the button toggles the process on/off.
+    if (startEdge && state != State::LOCKOUT && state != State::FAULT) {
+      processOn = !processOn;
+      Serial.print(F("[torrador] process "));
+      Serial.println(processOn ? F("START") : F("STOP"));
+      if (!processOn) state = State::IDLE;
+    }
   }
 
   // ---- State machine (optimistic: enable => firing; a fault drops to LOCKOUT) ----
@@ -294,6 +332,8 @@ void loop() {
       break;
     case State::LOCKOUT:
       break;  // latched — only BOOT (handled above) clears it
+    case State::ESTOP:
+      break;  // latched emergency stop — only BOOT (handled above) clears it
     case State::FAULT:
       if (!sensorFault) state = State::IDLE;   // sensor recovered
       break;

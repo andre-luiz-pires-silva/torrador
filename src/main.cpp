@@ -2,6 +2,7 @@
 #include <U8g2lib.h>
 #include "board_config.h"
 #include "branding.h"
+#include "config.h"
 
 // -----------------------------------------------------------------------------
 // Burner control — bench version (dry, no gas, no INV yet).
@@ -20,22 +21,11 @@
 //   MAX6675 (BT)                -> temperature for min/max regulation
 //
 // Temperature control is a simple min/max band on BT. If min and max are not both
-// configured, the burner stays ON directly. Set over serial: `min <c>`, `max <c>`,
-// `min -`, `max -`, `show`.
+// configured, the burner stays ON directly. Set over serial (`min <c>`, `max <c>`,
+// `min -`, `max -`, `show`); values are persisted to LittleFS (see config.h).
 //
 // States: IDLE -> RUN <-> HOLD, with LOCKOUT (latched fault) and FAULT (sensor).
 // -----------------------------------------------------------------------------
-
-// ---- Configuration (runtime, via serial; not persisted yet) ----
-struct Config {
-  float tempMinC;   // NaN = not configured
-  float tempMaxC;   // NaN = not configured
-};
-static Config cfg = { NAN, NAN };   // no min/max => flame direct
-
-static bool regulationConfigured() {
-  return !isnan(cfg.tempMinC) && !isnan(cfg.tempMaxC);
-}
 
 // ---- Display ----
 static U8G2_SSD1306_128X64_NONAME_F_HW_I2C display(U8G2_R0, U8X8_PIN_NONE);
@@ -102,12 +92,12 @@ static void fmtTemp(char *out, size_t n, float v) {
 
 static void printConfig() {
   char sMin[8], sMax[8];
-  fmtTemp(sMin, sizeof(sMin), cfg.tempMinC);
-  fmtTemp(sMax, sizeof(sMax), cfg.tempMaxC);
+  fmtTemp(sMin, sizeof(sMin), config.manual.temperature.minC);
+  fmtTemp(sMax, sizeof(sMax), config.manual.temperature.maxC);
   Serial.print(F("[cfg] min="));  Serial.print(sMin);
   Serial.print(F("  max="));      Serial.print(sMax);
   Serial.print(F("  -> "));
-  Serial.println(regulationConfigured() ? F("min/max") : F("flame direct"));
+  Serial.println(config.manual.temperature.configured() ? F("min/max") : F("flame direct"));
 }
 
 // Returns true if a command line was handled (so the display can refresh).
@@ -123,7 +113,8 @@ static bool handleLine(char *line) {
     if (!arg) { Serial.println(F("[cfg] usage: min <c> | min -")); return false; }
 
     if (strcmp(arg, "-") == 0 || strcmp(arg, "off") == 0 || strcmp(arg, "clear") == 0) {
-      if (isMin) cfg.tempMinC = NAN; else cfg.tempMaxC = NAN;
+      if (isMin) config.manual.temperature.minC = NAN; else config.manual.temperature.maxC = NAN;
+      configSave();
       printConfig();
       return true;
     }
@@ -131,13 +122,14 @@ static bool handleLine(char *line) {
     float v = strtod(arg, &end);
     if (end == arg) { Serial.println(F("[cfg] error: invalid number")); return false; }
 
-    float nmin = isMin ? v : cfg.tempMinC;
-    float nmax = isMin ? cfg.tempMaxC : v;
+    float nmin = isMin ? v : config.manual.temperature.minC;
+    float nmax = isMin ? config.manual.temperature.maxC : v;
     if (!isnan(nmin) && !isnan(nmax) && nmin >= nmax) {
       Serial.println(F("[cfg] error: min must be < max"));
       return false;
     }
-    if (isMin) cfg.tempMinC = v; else cfg.tempMaxC = v;
+    if (isMin) config.manual.temperature.minC = v; else config.manual.temperature.maxC = v;
+    configSave();
     printConfig();
     return true;
   }
@@ -197,8 +189,8 @@ static void renderScreen() {
   display.drawUTF8(4, 47, st);
 
   char sMin[8], sMax[8], mm[24];
-  fmtTemp(sMin, sizeof(sMin), cfg.tempMinC);
-  fmtTemp(sMax, sizeof(sMax), cfg.tempMaxC);
+  fmtTemp(sMin, sizeof(sMin), config.manual.temperature.minC);
+  fmtTemp(sMax, sizeof(sMax), config.manual.temperature.maxC);
   snprintf(mm, sizeof(mm), "Min:%s  Max:%s", sMin, sMax);
   display.setFont(u8g2_font_6x12_tf);
   display.drawUTF8(4, 61, mm);
@@ -209,6 +201,8 @@ static void renderScreen() {
 void setup() {
   Serial.begin(115200);
   delay(100);
+
+  configBegin();   // mount LittleFS + load /config.json
 
   pinMode(PIN_MAX6675_SCK, OUTPUT);
   digitalWrite(PIN_MAX6675_SCK, LOW);
@@ -263,11 +257,11 @@ void loop() {
   bool sensorFault = isnan(lastTempC);
 
   // ---- Demand: min/max hysteresis; flame-direct when not configured ----
-  if (!regulationConfigured()) {
+  if (!config.manual.temperature.configured()) {
     demand = true;
   } else if (!sensorFault) {
-    if (lastTempC <= cfg.tempMinC)      demand = true;
-    else if (lastTempC >= cfg.tempMaxC) demand = false;
+    if (lastTempC <= config.manual.temperature.minC)      demand = true;
+    else if (lastTempC >= config.manual.temperature.maxC) demand = false;
     // between the thresholds: keep previous demand (hysteresis)
   }
 

@@ -134,32 +134,32 @@ There is no ESP-level retry — the INV's internal 3 attempts are the retries.
 
 ## 7. Configuration model
 
-Target: a JSON config on LittleFS (`config_version` for migration). The current
-firmware implements only the **min/max** part, set over serial at runtime;
-LittleFS persistence is a planned follow-up.
+Settings live in a dedicated module (`src/config.h` / `src/config.cpp`), persisted
+to LittleFS as `/config.json` (ArduinoJson). Loaded at boot; if the file is absent
+or can't be read in the current format, it is treated as no config and reset to
+defaults (no versioning/migration). A valid change over serial is saved immediately.
 
+Settings are grouped by **operating mode**, then by area. Two modes are foreseen:
+- **`manual`** — the controller runs on its own settings (today: min/max temperature).
+- **`artisan`** — the controller is a **MODBUS TCP slave** driven by Artisan (Phase 3, no settings yet).
+
+Current schema:
 ```jsonc
 {
-  "config_version": 1,
-  "heat_source": "gas",            // "gas" | "electric" (reserved, stub)
-
-  "burner": {                      // INV-27109 supervision (ESP side)
-    "fault_debounce_ms": 200       // debounce for the INV fault (12V buzzer) input
-  },
-
-  "regulation": {                  // simple min/max band on BT; unset => flame direct
-    "temp_min_c": null,            // °C; null = not configured
-    "temp_max_c": null             // temp_min_c < temp_max_c
-  },
-
-  "safety": {
-    "hard_max_temp_c": 250,        // independent over-temperature cutoff
-    "sensor_fault_action": "shutdown"
+  "manual": {                        // standalone mode
+    "temperature": {                 // min/max band on BT; either omitted => flame direct
+      "min_c": 28,                   // °C  (absent = not configured)
+      "max_c": 33                    // min < max
+    }
   }
 }
 ```
 
-Validation (rejected on set): `temp_min_c < temp_max_c`. Either unset ⇒ flame direct.
+Planned future settings (design intent, not implemented yet) — under `manual`:
+`burner` (`fault_debounce_ms`), `safety` (`hard_max_temp_c`, `sensor_fault_action`);
+top-level: `artisan` (MODBUS options), `network` (Wi-Fi provisioning, PRD F6).
+
+Validation (rejected on set): `min_c < max_c`. Either unset ⇒ flame direct.
 
 ## 8. Serial command interface
 
@@ -170,9 +170,9 @@ Validation (rejected on set): `temp_min_c < temp_max_c`. Either unset ⇒ flame 
 | `max <c>` | Set the maximum temperature (°C) |
 | `min -` / `max -` | Clear a value (unset ⇒ flame direct) |
 
-Invalid input returns an error line and leaves the config unchanged. The LOCKOUT
-is cleared with the **BOOT** button. (More commands and LittleFS persistence are
-planned follow-ups.)
+Invalid input returns an error line and leaves the config unchanged; a valid
+change is saved to `/config.json` immediately. The LOCKOUT is cleared with the
+**BOOT** button. (More commands and a web UI are planned follow-ups.)
 
 ## 9. Safety invariants (non-negotiable)
 

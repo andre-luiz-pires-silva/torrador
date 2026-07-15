@@ -56,7 +56,7 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 ## Technical stack (decided — do not replace)
 
 - **ESPAsyncWebServer** (async server; never use the synchronous `WebServer`)
-- **LittleFS** for: interface static files (HTML/CSS/JS), persisted rules, network `config.json`
+- **LittleFS** for: interface static files (HTML/CSS/JS) and persisted settings (`/config.json`, incl. network provisioning later). Runtime settings live in a `config` module (`src/config.h` / `src/config.cpp`), grouped by area
 - **ESPmDNS**: default name derives from the branding config (`torrador` for the default brand) -> `http://torrador.local`
 - **Plain HTTP, port 80, no TLS** — conscious decision (local network); do not "improve" to HTTPS
 - WiFi provisioning: **custom implementation** (AP + captive portal with `DNSServer`) — do not use WiFiManager
@@ -65,7 +65,7 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 
 - Temperature regulation is a simple **min/max band on BT** (below min → demand heat; above max → stop, with hysteresis). If min/max are not both configured, the burner stays on directly. No rule engine, no BT/ET selection — deliberately minimal.
 - **Turning the burner OFF always takes precedence** (max reached, flame fault, STOP, or sensor fault). This is a thermal-safety requirement, not an implementation detail.
-- The manual/automatic toggle is **single** and affects both relays simultaneously. In automatic mode, manual relay commands are rejected.
+- Operating modes: **manual** (standalone — runs on its own settings) and, in Phase 3, **Artisan** (MODBUS TCP slave). In manual mode a single **START/STOP** control runs/stops the process; with min/max set the burner regulates to the band, otherwise the flame follows START/STOP.
 - MAX6675: minimum ~220ms interval between reads of the same chip — respect this in the read cycle.
 - Shared SPI between the two MAX6675 (same SCK/SO), individual CS.
 - Common relay modules are **active-LOW** — confirm the module's polarity before assuming HIGH=on.

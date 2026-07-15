@@ -58,23 +58,21 @@ V0 is a **proof of concept** to validate the integration of the ESP32 with the r
   - **ET** (Environmental Temperature): air temperature
 - Real-time updates (WebSocket or polling — see section 3.6)
 
-#### F2 — Manual relay control
-- Independent on/off button for each relay:
-  - Relay #1: burner
-  - Relay #2: drum motor
-- Available when the system is in manual mode
+#### F2 — Operation control (START/STOP)
+- A single **START/STOP** control toggles the process on/off (the operator's run/stop).
+- On STOP — and at boot — the burner is off. A latched fault (**LOCKOUT**) is cleared with the BOOT button.
 
-#### F3 — Manual / automatic mode
-- **Single toggle** that switches the whole system between manual and automatic
-- The toggle affects **both relays simultaneously** (no mixed mode)
-- In automatic mode, manual buttons are disabled and the min/max temperature control takes control
+#### F3 — Manual mode
+- The controller runs in **manual** mode — it operates on its own settings. (The other mode, **Artisan** / MODBUS TCP slave, is Phase 3.)
+- While the process is running, the manual-mode behaviour depends on configuration:
+  - **min/max set** → the ESP regulates the burner to keep the temperature within the band (F4).
+  - **min/max not set** → the flame follows START/STOP directly (on while running, off when stopped).
 
-#### F4 — Temperature control (automatic mode)
+#### F4 — Temperature band (min/max)
 > The gas-burner behaviour behind this feature (ignition, flame supervision, and the min/max regulation) is specified in `docs/design-flame-control.md`.
 - Simple **min/max temperature band on BT**:
   - Below **min** → demand heat (burner on).
   - Above **max** → stop (burner off), with hysteresis between the two thresholds.
-- If **min/max are not both configured**, the burner stays **on directly** (no thermostat).
 - **Off always wins:** reaching max, a flame fault, STOP, or a sensor fault always turns the burner off.
 - The drum relay is a plain on/off output (no temperature logic).
 
@@ -90,7 +88,7 @@ V0 is a **proof of concept** to validate the integration of the ESP32 with the r
 POWER ON
   |- No saved credentials -> CONFIGURATION MODE (AP)
   |- Saved credentials    -> OPERATION MODE (STA)
-       |- Connected -> normal services (web, mDNS, rules)
+       |- Connected -> normal services (web, mDNS, control)
        |- Failed after timeout (e.g., 60s) -> CONFIGURATION MODE (automatic fallback)
 ```
 
@@ -112,10 +110,9 @@ POWER ON
 
 | Section | Elements |
 |---|---|
-| **Dashboard** | Real-time BT and ET reading; current state of both relays (on/off); current mode indicator (manual/automatic) |
-| **Manual control** | On/off button for the burner relay; on/off button for the drum relay (enabled only in manual mode) |
-| **Mode** | Single manual/automatic toggle |
-| **Temperature** | Set the min and max temperatures (°C) for the burner band; leave blank to keep the flame on directly |
+| **Dashboard** | Real-time BT and ET reading; current burner state (idle/heating/hold/lockout); process running indicator |
+| **Control** | START/STOP the process; reset a lockout |
+| **Temperature** | Set the min and max temperatures (°C) for the burner band; leave blank to keep the flame following START/STOP |
 
 *(Note: user-facing labels are in Portuguese (BR) for V0 per the Language Policy; the table above describes function in English.)*
 
@@ -161,11 +158,11 @@ POWER ON
 5. **mDNS:** ESPmDNS library, registering `torrador.local`
 6. **Network provisioning:** AP + captive portal state machine (see F6)
 
-**Configuration (logical model):**
+**Configuration (logical model):** grouped by operating mode (see `docs/design-flame-control.md` §7)
 ```
-TemperatureConfig = {
-  temp_min_c: number | null,   // null = not configured
-  temp_max_c: number | null    // temp_min_c < temp_max_c
+manual.temperature = {
+  min_c: number | null,   // null = not configured
+  max_c: number | null    // min_c < max_c
 }
 // Either unset => burner stays on directly (flame direct)
 ```
@@ -173,11 +170,12 @@ TemperatureConfig = {
 **Global system state:**
 ```
 {
-  mode: "manual" | "automatic",   // single toggle, affects both relays
-  burner:    { state: bool, config: TemperatureConfig },
-  drumRelay: { state: bool },     // plain on/off
-  bt: float,   // last reading (°C)
-  et: float    // last reading (°C)
+  mode: "manual",          // "manual" now; "artisan" (MODBUS slave) is Phase 3
+  process: bool,           // START/STOP
+  burnerState: "idle" | "run" | "hold" | "lockout" | "fault",
+  temperature: { min_c, max_c },   // manual-mode config (see above)
+  bt: float,               // last reading (°C)
+  et: float                // last reading (°C)
 }
 ```
 
@@ -188,10 +186,8 @@ TemperatureConfig = {
 | Route | Method | Function |
 |---|---|---|
 | `/` | GET | Main page (dashboard, served from LittleFS) |
-| `/status` | GET | JSON: BT, ET, relay states, current mode |
-| `/relay/{burner\|drum}/on` | POST | Turn relay on manually (manual mode only) |
-| `/relay/{burner\|drum}/off` | POST | Turn relay off manually (manual mode only) |
-| `/mode` | POST | Toggle manual/automatic (single toggle) |
+| `/status` | GET | JSON: BT, ET, burner state, process on/off |
+| `/process` | POST | START/STOP the process (run/stop) |
 | `/config/temperature` | GET | Return the current min/max (JSON) |
 | `/config/temperature` | POST | Save min/max (or clear) and persist to LittleFS |
 | `/network/reset` | POST | Erase network credentials and restart in configuration mode (AP) |
@@ -261,11 +257,11 @@ TemperatureConfig = {
 
 1. Web interface reachable at `http://torrador.local` from a computer and phone on the same network
 2. Dashboard displays BT and ET in real time, with plausible values from the real probes
-3. In manual mode, each relay turns on/off via its corresponding button (feedback visible on the module LED)
-4. In automatic mode, the burner follows the min/max band on BT (off always wins); with min/max unset, the flame stays on directly
+3. In manual mode, START/STOP runs and stops the process (burner off on STOP and at boot; LOCKOUT cleared with BOOT)
+4. With min/max set, the burner regulates to the band on BT (off always wins)
 5. The min and max temperatures can be set, cleared, and saved
 6. The min/max settings persist after restarting the ESP
-7. The single toggle switches manual/automatic for both relays simultaneously
+7. With min/max unset, the flame follows START/STOP (on while running, off when stopped)
 8. With no saved credentials, the device comes up in AP mode (`Torrador-Setup`) and the captive portal opens the configuration page automatically when connecting from a phone
 9. After saving SSID/password in the portal, the device restarts and connects to the configured network
 10. Connection failure after timeout automatically returns to AP mode; the physical boot button and a web interface option also reset the network configuration

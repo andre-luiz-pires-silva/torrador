@@ -18,6 +18,8 @@
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <DNSServer.h>
 
 // -----------------------------------------------------------------------------
 // Pin map — PROVISIONAL. Final pin assignment is an open item in the PRD.

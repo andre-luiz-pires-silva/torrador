@@ -23,6 +23,20 @@ bool parseMode(const char *s, Mode &out) {
   return false;
 }
 
+const char *netModeName(NetMode m) {
+  switch (m) {
+    case NetMode::AP:  return "ap";
+    case NetMode::STA: return "sta";
+  }
+  return "ap";
+}
+
+bool parseNetMode(const char *s, NetMode &out) {
+  if (strcmp(s, "ap") == 0)  { out = NetMode::AP;  return true; }
+  if (strcmp(s, "sta") == 0) { out = NetMode::STA; return true; }
+  return false;
+}
+
 // --- Serialization (one block per group; extend as groups are added) ---
 static void toJson(JsonDocument &doc) {
   doc["mode"] = modeName(config.mode);
@@ -33,6 +47,13 @@ static void toJson(JsonDocument &doc) {
   if (!isnan(config.manual.temperature.maxC)) t["max_c"] = config.manual.temperature.maxC;
   // (unset values are omitted; they read back as NAN)
   // artisan mode: no fields yet
+  // network provisioning
+  JsonObject net = doc["network"].to<JsonObject>();
+  net["mode"]        = netModeName(config.network.mode);
+  net["ssid"]        = config.network.ssid;
+  net["password"]    = config.network.password;
+  net["ap_password"] = config.network.apPassword;
+  net["mdns_host"]   = config.network.mdnsHost;
 }
 
 static void fromJson(JsonDocument &doc) {
@@ -43,6 +64,13 @@ static void fromJson(JsonDocument &doc) {
   JsonVariant maxC = doc["manual"]["temperature"]["max_c"];
   config.manual.temperature.minC = minC.isNull() ? NAN : minC.as<float>();
   config.manual.temperature.maxC = maxC.isNull() ? NAN : maxC.as<float>();
+
+  NetMode nm;
+  config.network.mode = parseNetMode(doc["network"]["mode"] | "", nm) ? nm : NetMode::AP;
+  strlcpy(config.network.ssid,       doc["network"]["ssid"]        | "",                sizeof(config.network.ssid));
+  strlcpy(config.network.password,   doc["network"]["password"]    | "",                sizeof(config.network.password));
+  strlcpy(config.network.apPassword, doc["network"]["ap_password"] | BRAND_AP_PASSWORD, sizeof(config.network.apPassword));
+  strlcpy(config.network.mdnsHost,   doc["network"]["mdns_host"]   | BRAND_MDNS_HOST,   sizeof(config.network.mdnsHost));
 }
 
 void configReset() {

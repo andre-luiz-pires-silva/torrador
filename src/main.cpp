@@ -3,6 +3,7 @@
 #include "board_config.h"
 #include "branding.h"
 #include "config.h"
+#include "net.h"
 
 // -----------------------------------------------------------------------------
 // Burner control — bench version (dry, no gas, no INV yet).
@@ -242,6 +243,10 @@ void setup() {
   drawCentered("Controle de chama", 44);
   display.sendBuffer();
 
+  // Network: bring up AP (permanent, default) or STA per config, with AP
+  // fallback. Started after the INV_ENABLE fail-safe above (safety-first order).
+  netBegin();
+
   Serial.println();
   Serial.println(F("[torrador] boot ok — burner control (bench)"));
   Serial.println(F("[torrador] serial: show | mode manual|auto|artisan | min <c> | max <c> | min - | max -"));
@@ -256,6 +261,10 @@ void setup() {
 void loop() {
   uint32_t now = millis();
   bool dirty = false;
+
+  // ---- Network ----
+  // Captive-portal DNS pump + deferred post-save reboot. Non-blocking.
+  netLoop();
 
   // ---- Inputs ----
   if (pollSerial()) dirty = true;

@@ -16,7 +16,7 @@
 The firmware is **white-label**: the same codebase is sold to multiple manufacturers, each with its own identity. The product name (and, later, logo/colors) must come from a single **branding configuration**, never hardcoded across the code.
 
 - **Compile-time branding**, one build per manufacturer (`branding.h` / build flags), not a runtime setting — zero runtime/RAM cost. Change the branding config, rebuild, and every user-visible surface follows. Default brand of this repo: **Torrador**.
-- **V0 scope (where possible and not costly):** at minimum the product name, plus everything derived from it — web UI title/header, serial boot banner, mDNS default hostname (`torrador`), and AP SSID (`Torrador-Setup`). Deeper visual theming (logos, colors) may be layered on in later phases; the invariant is that no brand string is hardcoded deep in logic.
+- **V0 scope (where possible and not costly):** at minimum the product name, plus everything derived from it — web UI title/header, serial boot banner, mDNS default hostname (`torrador`), and AP SSID (`Torrador`). Deeper visual theming (logos, colors) may be layered on in later phases; the invariant is that no brand string is hardcoded deep in logic.
 - Branding shares the same "centralized strings" pattern as i18n: the product name is a single value that user-facing strings interpolate.
 - The **web UI** (static files on LittleFS) must read the brand from the firmware (e.g. the `/status` JSON or a small branding endpoint/generated file), not bake the product name into HTML/JS.
 
@@ -93,7 +93,7 @@ POWER ON
 ```
 
 **Configuration mode (AP):**
-- The ESP creates its own network `{Brand}-Setup` (`Torrador-Setup` for the default brand, per §0.2); default IP `192.168.4.1`
+- The ESP creates its own network `{Brand}` (`Torrador` for the default brand, per §0.2); default IP `192.168.4.1`
 - **Captive portal** via `DNSServer` answering all DNS queries with the ESP's IP — the phone opens the configuration page automatically on connect
 - Configuration page served from LittleFS, containing:
   - SSID (with a "scan networks" button via `WiFi.scanNetworks()`)
@@ -262,7 +262,7 @@ manual.temperature = {
 5. The min and max temperatures can be set, cleared, and saved
 6. The min/max settings persist after restarting the ESP
 7. With min/max unset, the flame follows START/STOP (on while running, off when stopped)
-8. With no saved credentials, the device comes up in AP mode (`Torrador-Setup`) and the captive portal opens the configuration page automatically when connecting from a phone
+8. With no saved credentials, the device comes up in AP mode (`Torrador`) and the captive portal opens the configuration page automatically when connecting from a phone
 9. After saving SSID/password in the portal, the device restarts and connects to the configured network
 10. Connection failure after timeout automatically returns to AP mode; the physical boot button and a web interface option also reset the network configuration
 11. User-facing interface text is in Portuguese (BR), with strings structured to allow future English localization

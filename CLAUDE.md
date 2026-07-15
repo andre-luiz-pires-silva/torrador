@@ -38,7 +38,7 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 
 - **Branding is compile-time**, one build per manufacturer (a `branding.h` / build flags), not a runtime setting. Change the branding config, rebuild, and every user-visible surface follows. Default brand of this repo: **Torrador**.
 - **Where possible and not costly** (V0 target): at minimum the product name string, plus everything derived from it — web UI title/header, serial boot banner, mDNS default hostname, and AP SSID. Deeper visual theming (logos, colors) can be layered on later; the invariant is *no brand string hardcoded deep in logic*.
-- The branding config sets the **defaults** for identity strings: mDNS host (`torrador` for the default brand), AP SSID (`Torrador-Setup`). The mDNS name stays user-overridable during provisioning (F6).
+- The branding config sets the **defaults** for identity strings: mDNS host (`torrador` for the default brand), AP SSID (`Torrador`). The mDNS name stays user-overridable during provisioning (F6).
 - **Same pattern as i18n:** the product name is a single centralized value that user-facing strings interpolate (see Language policy). Keep branding and translatable strings in one place.
 - **Web UI (static files on LittleFS):** the front-end must read the brand from the firmware (e.g. the `/status` JSON or a small branding endpoint/generated file), not bake the product name into HTML/JS.
 
@@ -80,7 +80,7 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 
 ## Network provisioning (PRD F6)
 
-- No saved credentials -> AP mode `Torrador-Setup` (IP `192.168.4.1`) + captive portal. AP SSID is `{Brand}-Setup`, derived from the branding config (`Torrador-Setup` for the default brand).
+- No saved credentials -> AP mode `Torrador` (IP `192.168.4.1`) + captive portal. AP SSID is `{Brand}`, derived from the branding config (`Torrador` for the default brand).
 - STA connection failure after timeout (~60s) -> automatic fallback to AP mode.
 - Credential reset: BOOT button held at boot, automatic fallback, and `/network/reset` route in the interface.
 

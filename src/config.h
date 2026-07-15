@@ -2,6 +2,8 @@
 
 #include <Arduino.h>
 
+#include "branding.h"   // BRAND_MDNS_HOST — default mDNS hostname
+
 // -----------------------------------------------------------------------------
 // config.h — central runtime configuration, persisted to LittleFS (/config.json).
 //
@@ -41,11 +43,34 @@ struct ArtisanConfig {
   // e.g. MODBUS port, register options — to be defined in Phase 3.
 };
 
+// --- Network / Wi-Fi (PRD F6) ---
+// Two network modes:
+//   AP  — the device IS the access point (WPA2), permanently. Default: usable
+//         out of the box with no site Wi-Fi. Also the config/fallback surface.
+//   STA — join an existing Wi-Fi; on failure the firmware falls back to AP.
+// Fixed buffers (no String) per the code-structure rules. Passwords are stored
+// in plaintext — acceptable in V0 (local network, documented).
+enum class NetMode : uint8_t { AP, STA };
+
+// NetMode <-> its lowercase name ("ap" / "sta"). Distinct from control Mode.
+const char *netModeName(NetMode m);
+bool parseNetMode(const char *s, NetMode &out);
+
+struct NetworkConfig {
+  NetMode mode        = NetMode::AP;        // AP = permanent access point (default); STA = join a network
+  char    ssid[33]    = "";                 // STA SSID (max 32 + NUL); "" = no STA target
+  char    password[65]= "";                 // STA WPA2 passphrase (max 63 + NUL)
+  char    apPassword[65] = BRAND_AP_PASSWORD;// AP WPA2 passphrase (always required, >=8)
+  char    mdnsHost[33]= BRAND_MDNS_HOST;    // user-overridable; defaults to brand
+  bool    staProvisioned() const { return ssid[0] != '\0'; }
+};
+
 // --- Root configuration ---
 struct Config {
   Mode          mode = Mode::MANUAL;   // active control authority (default MANUAL)
   ManualConfig  manual;
   ArtisanConfig artisan;
+  NetworkConfig network;
 };
 
 // Global instance.

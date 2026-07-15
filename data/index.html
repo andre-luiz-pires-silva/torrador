@@ -4,10 +4,131 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Torrador</title>
+  <style>
+    /* Minimalist: content flows directly on the page, no card. Single
+       high-contrast light theme (captive-portal webviews mangle dark mode). */
+    * { box-sizing: border-box; }
+    html, body { margin: 0; }
+    body {
+      min-height: 100vh;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      color: #111827; background: #f7f8fa;
+      -webkit-text-size-adjust: 100%;
+    }
+    .wrap { max-width: 22rem; margin: 0 auto; padding: 1.25rem; }
+
+    header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 1.5rem;
+    }
+    h1 { font-size: 1.25rem; font-weight: 700; margin: 0; }
+    .gear {
+      display: inline-flex; padding: .4rem; margin: -.4rem; border-radius: 8px;
+      color: #6b7280; text-decoration: none;
+    }
+    .gear:active { background: #eceef1; }
+
+    .mode {
+      display: inline-block; font-size: .72rem; font-weight: 700;
+      text-transform: uppercase; letter-spacing: .06em; color: #6b7280;
+      background: #eceef1; padding: .2rem .55rem; border-radius: 999px;
+    }
+    .temp { font-size: 3.5rem; font-weight: 700; line-height: 1.1; margin: .6rem 0 .1rem; }
+    .temp .unit { font-size: 1.5rem; font-weight: 600; color: #6b7280; }
+    .state { font-size: 1.15rem; font-weight: 700; color: #6b7280; }
+    .band { margin-top: .5rem; font-size: .9rem; color: #6b7280; }
+
+    .actions { margin-top: 2rem; display: flex; flex-direction: column; gap: .6rem; }
+    button {
+      font-family: inherit; font-size: 1.05rem; font-weight: 700;
+      padding: .95rem; border: 0; border-radius: 12px; cursor: pointer; color: #fff;
+      transition: background .15s, opacity .15s;
+    }
+    .primary { background: #16a34a; }  .primary:active { background: #15803d; }
+    .danger  { background: #dc2626; }  .danger:active  { background: #b91c1c; }
+    .ghost {
+      background: #fff; color: #b91c1c; border: 1.5px solid #f0b4b4;
+    }
+    .ghost:active { background: #fef2f2; }
+    button:disabled { opacity: .55; cursor: default; }
+    [hidden] { display: none; }
+  </style>
 </head>
 <body>
-  <!-- Placeholder da interface web (servida da LittleFS). Substituir na F-UI. -->
-  <h1>Torrador</h1>
-  <p>Controlador de torra — interface em construção.</p>
+  <div class="wrap">
+    <header>
+      <h1 id="brand">Torrador</h1>
+      <a class="gear" href="/settings" aria-label="Configurações" title="Configurações">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        </svg>
+      </a>
+    </header>
+
+    <span class="mode" id="mode">—</span>
+    <div class="temp"><span id="temp">--</span><span class="unit"> °C</span></div>
+    <div class="state" id="state">—</div>
+    <div class="band" id="band">Mín: —   Máx: —</div>
+
+    <div class="actions">
+      <button id="startstop" class="primary">—</button>
+      <button id="clear" class="ghost" hidden>Destravar</button>
+    </div>
+  </div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+
+    const MODES = { manual: 'Manual', auto: 'Automático', artisan: 'Artisan' };
+    const STATES = {
+      IDLE:    { label: 'Parado',               color: '#6b7280' },
+      RUN:     { label: 'Aquecendo',            color: '#d97706' },
+      HOLD:    { label: 'Temperatura OK',        color: '#15803d' },
+      LOCKOUT: { label: 'Falha — destrave',      color: '#b91c1c' },
+      ESTOP:   { label: 'Emergência — destrave', color: '#b91c1c' },
+      FAULT:   { label: 'Falha no sensor BT',    color: '#b91c1c' },
+    };
+    const fmt = (v) => (v === null || v === undefined) ? '—' : ('' + v);
+
+    fetch('/brand').then(r => r.json()).then(b => {
+      if (b && b.name) { document.title = b.name; $('brand').textContent = b.name; }
+    }).catch(() => {});
+
+    async function poll() {
+      try {
+        const s = await (await fetch('/status')).json();
+        $('mode').textContent = MODES[s.mode] || s.mode;
+        $('temp').textContent = (s.temp_c === null || s.temp_c === undefined)
+          ? '--' : s.temp_c.toFixed(1);
+        const st = STATES[s.state] || { label: s.state, color: '#6b7280' };
+        $('state').textContent = st.label;
+        $('state').style.color = st.color;
+        $('band').textContent = 'Mín: ' + fmt(s.min_c) + '   Máx: ' + fmt(s.max_c);
+
+        const ss = $('startstop');
+        if (s.mode === 'artisan') {
+          ss.textContent = 'Parada de emergência'; ss.className = 'danger';
+        } else {
+          ss.textContent = s.process_on ? 'Parar' : 'Iniciar';
+          ss.className = s.process_on ? 'danger' : 'primary';
+        }
+        $('clear').hidden = !(s.state === 'LOCKOUT' || s.state === 'ESTOP');
+      } catch (e) { /* transient — keep last values */ }
+    }
+
+    async function cmd(c) {
+      try {
+        await fetch('/command', { method: 'POST', body: new URLSearchParams({ cmd: c }) });
+        await poll();
+      } catch (e) { /* ignore */ }
+    }
+    $('startstop').addEventListener('click', () => cmd('startstop'));
+    $('clear').addEventListener('click', () => cmd('clear'));
+
+    poll();
+    setInterval(poll, 1000);
+  </script>
 </body>
 </html>

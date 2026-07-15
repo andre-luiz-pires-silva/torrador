@@ -274,6 +274,13 @@ void loop() {
   bool bootEdge = btnUpdate(btnBoot, now);
   bool faultActive = btnFault.level;
 
+  // Web commands act exactly like the physical buttons (the loop owns safety).
+  switch (netTakeCommand()) {
+    case NetCommand::START_STOP:  startEdge = true; break;
+    case NetCommand::CLEAR_LATCH: bootEdge  = true; break;
+    default: break;
+  }
+
   if (now - lastReadMs >= SENSOR_INTERVAL_MS) {
     lastReadMs = now;
     lastTempC = max6675ReadCelsius(PIN_MAX6675_CS_BT);
@@ -356,5 +363,13 @@ void loop() {
     Serial.println(stateName(state));
     dirty = true;
   }
+
+  // Publish live status for the web home dashboard (mirrors the OLED).
+  AppStatus st;
+  strlcpy(st.state, stateName(state), sizeof(st.state));
+  st.tempC     = lastTempC;
+  st.processOn = processOn;
+  netPublishStatus(st);
+
   if (dirty) renderScreen();
 }

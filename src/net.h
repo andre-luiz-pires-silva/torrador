@@ -1,5 +1,7 @@
 #pragma once
 
+#include <Arduino.h>   // uint8_t, NAN — keep this header self-contained
+
 // -----------------------------------------------------------------------------
 // net.h — Wi-Fi / web-server bring-up (PRD F6).
 //
@@ -20,3 +22,22 @@ void netBegin();
 // deferred reboot after a successful /save. Call every loop() iteration; the
 // async web server itself needs no pump.
 void netLoop();
+
+// --- Home dashboard bridge (control loop <-> web) ----------------------------
+// The web server runs on the AsyncTCP task; the control loop on loop(). These
+// two calls pass live status out and user commands in. Kept intentionally small
+// (scalar fields, single-slot command) — good enough for V0.
+
+// Live status the `/status` endpoint serves. Published by the control loop.
+struct AppStatus {
+  char  state[12] = "IDLE";   // state code: IDLE/RUN/HOLD/LOCKOUT/ESTOP/FAULT
+  float tempC     = NAN;      // BT temperature; NaN on sensor fault
+  bool  processOn = false;    // process START/STOP latch
+};
+void netPublishStatus(const AppStatus &s);
+
+// Web-issued control commands, consumed once by the control loop.
+//   START_STOP  — same effect as the physical START/STOP button
+//   CLEAR_LATCH — same effect as BOOT: release a latched LOCKOUT/ESTOP
+enum class NetCommand : uint8_t { NONE, START_STOP, CLEAR_LATCH };
+NetCommand netTakeCommand();

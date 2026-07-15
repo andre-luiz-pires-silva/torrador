@@ -19,6 +19,18 @@ static bool     apActive   = false;   // true while the soft-AP + captive DNS ar
 // Deferred reboot after /save so the HTTP response flushes before we restart.
 static uint32_t rebootAtMs = 0;
 
+// Home-dashboard bridge (see net.h).
+static AppStatus           pubStatus;
+static volatile NetCommand pendingCmd = NetCommand::NONE;
+
+void netPublishStatus(const AppStatus &s) { pubStatus = s; }
+
+NetCommand netTakeCommand() {
+  NetCommand c = pendingCmd;
+  pendingCmd = NetCommand::NONE;
+  return c;
+}
+
 // --- Route handlers -----------------------------------------------------------
 
 // Bootstrap the portal: brand name (never hardcoded — white-label rule) plus the
@@ -135,15 +147,55 @@ static void handleSave(AsyncWebServerRequest *req) {
   if (ok) rebootAtMs = millis() + 1200;   // apply on reboot; let the response flush first
 }
 
+// Live controller status for the home dashboard (mirrors the OLED display).
+static void handleStatus(AsyncWebServerRequest *req) {
+  AsyncResponseStream *res = req->beginResponseStream("application/json");
+  JsonDocument doc;
+  doc["mode"]       = modeName(config.mode);
+  doc["state"]      = pubStatus.state;
+  doc["process_on"] = pubStatus.processOn;
+  if (isnan(pubStatus.tempC)) doc["temp_c"] = nullptr; else doc["temp_c"] = pubStatus.tempC;
+
+  float mn = config.manual.temperature.minC;
+  float mx = config.manual.temperature.maxC;
+  if (isnan(mn)) doc["min_c"] = nullptr; else doc["min_c"] = mn;
+  if (isnan(mx)) doc["max_c"] = nullptr; else doc["max_c"] = mx;
+
+  serializeJson(doc, *res);
+  req->send(res);
+}
+
+// Web control commands — queued for the control loop (single slot). START/STOP
+// and latch-clear mirror the physical buttons; the loop owns all safety logic.
+static void handleCommand(AsyncWebServerRequest *req) {
+  String cmd = req->hasParam("cmd", true) ? req->getParam("cmd", true)->value() : "";
+  bool ok = true;
+  if      (cmd == "startstop") pendingCmd = NetCommand::START_STOP;
+  else if (cmd == "clear")     pendingCmd = NetCommand::CLEAR_LATCH;
+  else                         ok = false;
+
+  AsyncResponseStream *res = req->beginResponseStream("application/json");
+  res->setCode(ok ? 200 : 400);
+  JsonDocument doc;
+  doc["ok"] = ok;
+  serializeJson(doc, *res);
+  req->send(res);
+}
+
 // Register web routes and start the server. Called in every mode so the UI is
 // reachable over AP and STA alike.
 static void setupRoutes() {
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *req) {
-    req->send(LittleFS, "/portal.html", "text/html");
+    req->send(LittleFS, "/index.html", "text/html");     // home dashboard
   });
-  server.on("/brand", HTTP_GET, handleBrand);
-  server.on("/scan",  HTTP_GET, handleScan);
-  server.on("/save",  HTTP_POST, handleSave);
+  server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *req) {
+    req->send(LittleFS, "/portal.html", "text/html");    // network settings
+  });
+  server.on("/brand",   HTTP_GET,  handleBrand);
+  server.on("/status",  HTTP_GET,  handleStatus);
+  server.on("/command", HTTP_POST, handleCommand);
+  server.on("/scan",    HTTP_GET,  handleScan);
+  server.on("/save",    HTTP_POST, handleSave);
   // Anything else (incl. OS captive-portal probes) -> bounce to the portal.
   server.onNotFound([](AsyncWebServerRequest *req) {
     req->redirect("http://192.168.4.1/");

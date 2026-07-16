@@ -27,16 +27,40 @@
     </div>
 
     <div class="readout">
-      <div class="pillrow">
-        <span class="pill" id="mode">—</span>
-        <span class="pill soft" id="net">—</span>
+      <div class="strip">
+        <div class="stat">
+          <span class="stat-label">Controle</span>
+          <span class="stat-val"><span class="ico" id="modeIco"></span><span class="txt" id="mode">—</span></span>
+        </div>
+        <div class="stat">
+          <span class="stat-label" id="netLabel">Rede</span>
+          <span class="stat-val"><span class="ico" id="netIco"></span><span class="txt" id="net">—</span></span>
+        </div>
       </div>
       <div>
         <span class="eyebrow">Temperatura do grão · BT</span>
-        <div class="hero"><span class="val" id="temp">--</span><span class="unit">°C</span></div>
+        <div class="hero"><span class="val" id="bt">--</span><span class="unit">°C</span></div>
+        <!-- Faixa de controle: pertence ao BT, então vive colada a ele (só em Automático). -->
+        <div class="range heat" id="band" hidden>
+          <div class="range-head">
+            <span class="range-lbl">Faixa de controle</span>
+            <span class="range-now" id="bandNow">—</span>
+          </div>
+          <div class="range-track">
+            <div class="range-fill" id="bandFill"></div>
+            <div class="range-marker" id="bandMarker"></div>
+          </div>
+          <div class="range-ends">
+            <span>mín <b id="bandMin">—</b></span>
+            <span>máx <b id="bandMax">—</b></span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <span class="eyebrow">Temperatura do ar · ET</span>
+        <div class="hero small"><span class="val" id="et">--</span><span class="unit">°C</span></div>
       </div>
       <div class="chip" id="state"><span class="dot"></span><span id="stateLabel">—</span></div>
-      <p class="hint" id="band" hidden>Faixa: — / —</p>
     </div>
 
     <div class="actions">
@@ -49,6 +73,20 @@
     const $ = (id) => document.getElementById(id);
 
     const MODES = { manual: 'Manual', auto: 'Automático', artisan: 'Artisan' };
+
+    // Inline stroke icons (match the product's gear/wifi style). Injected by mode/net.
+    const SVG = (p) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+      + 'stroke-linecap="round" stroke-linejoin="round">' + p + '</svg>';
+    const MODE_ICON = {
+      manual:  SVG('<circle cx="12" cy="8" r="3.2"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>'),
+      auto:    SVG('<path d="M20 12a8 8 0 1 1-2.34-5.66"/><path d="M20 4v4h-4"/>'),
+      artisan: SVG('<path d="M4 4v16h16"/><path d="M7 15l3.5-4 3 2.2L20 7"/>'),
+    };
+    const ICON_AP  = SVG('<circle cx="12" cy="12" r="2.2"/><path d="M8.2 8.2a5.4 5.4 0 0 0 0 7.6"/>'
+      + '<path d="M15.8 8.2a5.4 5.4 0 0 1 0 7.6"/><path d="M5.6 5.6a9 9 0 0 0 0 12.8"/>'
+      + '<path d="M18.4 5.6a9 9 0 0 1 0 12.8"/>');
+    const ICON_STA = SVG('<path d="M4.5 9.5a11 11 0 0 1 15 0"/><path d="M7.5 12.8a7 7 0 0 1 9 0"/>'
+      + '<path d="M10.5 16a3 3 0 0 1 3 0"/><circle cx="12" cy="18.8" r="1" fill="currentColor" stroke="none"/>');
     const STATES = {
       IDLE:    { label: 'Parado',                color: '#78716c' },
       RUN:     { label: 'Aquecendo',             color: '#d97706' },
@@ -57,7 +95,6 @@
       ESTOP:   { label: 'Emergência — destrave',  color: '#b91c1c' },
       FAULT:   { label: 'Falha no sensor BT',     color: '#b91c1c' },
     };
-    const fmt = (v) => (v === null || v === undefined) ? '—' : (v + '°');
 
     fetch('/brand').then(r => r.json()).then(b => {
       if (b && b.name) { document.title = b.name; $('brand').textContent = b.name; }
@@ -67,17 +104,40 @@
       try {
         const s = await (await fetch('/status')).json();
         $('mode').textContent = MODES[s.mode] || s.mode;
-        $('net').textContent = s.net || '—';
-        $('temp').textContent = (s.temp_c === null || s.temp_c === undefined)
-          ? '--' : s.temp_c.toFixed(1);
+        $('modeIco').innerHTML = MODE_ICON[s.mode] || '';
+        // Rede: rótulo humano ("Rede própria" p/ AP, "Conectado" p/ STA) + nome (SSID).
+        const ap = s.net === 'AP';
+        $('netLabel').textContent = ap ? 'Rede própria' : 'Conectado';
+        $('netIco').innerHTML = ap ? ICON_AP : ICON_STA;
+        $('net').textContent = s.ssid || '—';
+        const temp = (v) => (v === null || v === undefined) ? '--' : v.toFixed(1);
+        $('bt').textContent = temp(s.bt_c);
+        $('et').textContent = temp(s.et_c);
 
         const st = STATES[s.state] || { label: s.state, color: '#78716c' };
         $('state').style.color = st.color;
         $('stateLabel').textContent = st.label;
 
-        // Faixa only matters in Automático.
-        $('band').hidden = (s.mode !== 'auto');
-        $('band').textContent = 'Faixa: ' + fmt(s.min_c) + ' / ' + fmt(s.max_c);
+        // Faixa de controle — só em Automático; mostra onde o BT está entre mín e máx.
+        const band = $('band');
+        if (s.mode === 'auto' && s.min_c != null && s.max_c != null) {
+          band.hidden = false;
+          $('bandMin').textContent = s.min_c + '°';
+          $('bandMax').textContent = s.max_c + '°';
+          const span = s.max_c - s.min_c;
+          let pct = (s.bt_c == null || span <= 0) ? 0 : ((s.bt_c - s.min_c) / span) * 100;
+          pct = Math.max(0, Math.min(100, pct));
+          $('bandFill').style.width = pct + '%';
+          $('bandMarker').style.left = pct + '%';
+          // Satisfeito (verde) quando o processo segura a temperatura (HOLD) ou BT ≥ máx;
+          // caso contrário está aquecendo (ember).
+          const satisfied = s.state === 'HOLD' || (s.bt_c != null && s.bt_c >= s.max_c);
+          band.className = 'range ' + (satisfied ? 'ok' : 'heat');
+          $('bandNow').textContent = s.bt_c == null ? '—'
+            : (s.bt_c < s.min_c ? 'abaixo' : s.bt_c >= s.max_c ? 'no topo' : 'dentro');
+        } else {
+          band.hidden = true;
+        }
 
         const ss = $('startstop');
         if (s.mode === 'artisan') {

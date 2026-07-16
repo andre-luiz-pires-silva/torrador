@@ -224,9 +224,12 @@ static void handleStatus(AsyncWebServerRequest *req) {
   JsonDocument doc;
   doc["mode"]       = modeName(config.mode);
   doc["net"]        = netActiveMode();       // "AP" / "STA" (actual interface)
+  // Network name shown on the dashboard: the AP's own SSID, or the joined network.
+  doc["ssid"]       = apActive ? BRAND_AP_SSID : config.network.ssid;
   doc["state"]      = pubStatus.state;
   doc["process_on"] = pubStatus.processOn;
-  if (isnan(pubStatus.tempC)) doc["temp_c"] = nullptr; else doc["temp_c"] = pubStatus.tempC;
+  if (isnan(pubStatus.btC)) doc["bt_c"] = nullptr; else doc["bt_c"] = pubStatus.btC;
+  if (isnan(pubStatus.etC)) doc["et_c"] = nullptr; else doc["et_c"] = pubStatus.etC;
 
   float mn = config.automatic.temperature.minC;
   float mx = config.automatic.temperature.maxC;

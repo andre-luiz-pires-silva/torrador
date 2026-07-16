@@ -55,7 +55,8 @@ static bool  demand = false;
 
 static const uint32_t SENSOR_INTERVAL_MS = 1000;
 static uint32_t lastReadMs = 0;
-static float lastTempC = NAN;
+static float lastBtC = NAN;   // bean temperature (BT) — drives the min/max control
+static float lastEtC = NAN;   // air/exhaust temperature (ET) — telemetry only
 
 static const char *stateName(State s) {
   switch (s) {
@@ -90,6 +91,14 @@ static float max6675ReadCelsius(uint8_t csPin) {
 static void fmtTemp(char *out, size_t n, float v) {
   if (isnan(v)) snprintf(out, n, "-");
   else          snprintf(out, n, "%g", v);
+}
+
+// Display formatter: fixed-width, always 3 integer digits + 1 decimal, e.g.
+// "017.5" (or "---.-" when unread). Constant width keeps the OLED layout stable
+// for any temperature — no shifting as values grow to three digits.
+static void fmtFixed(char *out, size_t n, float v) {
+  if (isnan(v)) snprintf(out, n, "---.-");
+  else          snprintf(out, n, "%05.1f", v);
 }
 
 static void printConfig() {
@@ -260,14 +269,40 @@ static void renderScreen() {
   display.drawUTF8(128 - display.getUTF8Width(cm), 6, cm);
   display.drawHLine(0, 13, 128);
 
+  // BT is the hero reading; ET rides compact on the right (telemetry only).
+  // Values are fixed-width (3 integer digits + 1 decimal, e.g. 017.5) so the row
+  // never shifts as readings grow — a layout that fits every temperature.
+  char v[8];
+  char bt[20];
+  fmtFixed(v, sizeof(v), lastBtC);
+  snprintf(bt, sizeof(bt), "BT %s°C", v);
   display.setFont(u8g2_font_7x13_tf);
-  char t[24];
-  if (isnan(lastTempC)) snprintf(t, sizeof(t), "BT: -- °C");
-  else                  snprintf(t, sizeof(t), "BT: %.1f °C", lastTempC);
-  display.drawUTF8(4, 30, t);
+  display.drawUTF8(4, 30, bt);
 
-  // State labels track the home page (accent-free — the 7x13B font lacks them;
-  // the latch states say BOOT, the physical clear action, not the web wording).
+  char et[16];
+  fmtFixed(v, sizeof(v), lastEtC);
+  snprintf(et, sizeof(et), "ET %s", v);
+  display.setFont(u8g2_font_6x12_tf);   // reuse an already-linked font (no extra flash)
+  display.drawUTF8(128 - display.getUTF8Width(et) - 2, 30, et);
+
+  // Faixa (Automático only) sits directly under the sensors — same rule as the
+  // home page. Hidden in other modes; the bottom status bar below stays put.
+  if (config.mode == Mode::AUTO) {
+    char sMin[8], sMax[8], mm[20];
+    fmtFixed(sMin, sizeof(sMin), config.automatic.temperature.minC);
+    fmtFixed(sMax, sizeof(sMax), config.automatic.temperature.maxC);
+    // Small "Faixa BT" label + fixed-width values keeps the whole line on screen.
+    display.setFont(u8g2_font_4x6_tf);
+    display.drawUTF8(4, 44, "Faixa BT");
+    int16_t vx = 4 + display.getUTF8Width("Faixa BT") + 4;
+    snprintf(mm, sizeof(mm), "%s / %s", sMin, sMax);
+    display.setFont(u8g2_font_6x12_tf);
+    display.drawUTF8(vx, 44, mm);
+  }
+
+  // Status label is pinned to the bottom bar in every mode, so it never shifts
+  // position with the mode. (Accent-free — the 7x13B font lacks accents; the
+  // latch states say BOOT, the physical clear action, not the web wording.)
   const char *st;
   switch (state) {
     case State::IDLE:    st = "Parado";          break;
@@ -279,17 +314,7 @@ static void renderScreen() {
     default:             st = "";                break;
   }
   display.setFont(u8g2_font_7x13B_tf);
-  display.drawUTF8(4, 47, st);
-
-  // Faixa only matters in Automático — same rule as the home page.
-  if (config.mode == Mode::AUTO) {
-    char sMin[8], sMax[8], mm[28];
-    fmtTemp(sMin, sizeof(sMin), config.automatic.temperature.minC);
-    fmtTemp(sMax, sizeof(sMax), config.automatic.temperature.maxC);
-    snprintf(mm, sizeof(mm), "Faixa: %s / %s", sMin, sMax);
-    display.setFont(u8g2_font_6x12_tf);
-    display.drawUTF8(4, 61, mm);
-  }
+  display.drawUTF8(4, 61, st);
 
   display.sendBuffer();
 }
@@ -304,6 +329,8 @@ void setup() {
   digitalWrite(PIN_MAX6675_SCK, LOW);
   pinMode(PIN_MAX6675_CS_BT, OUTPUT);
   digitalWrite(PIN_MAX6675_CS_BT, HIGH);
+  pinMode(PIN_MAX6675_CS_ET, OUTPUT);
+  digitalWrite(PIN_MAX6675_CS_ET, HIGH);
   pinMode(PIN_MAX6675_SO, INPUT);
 
   // Actuator: force OFF before anything else (fail-safe habit).
@@ -334,7 +361,8 @@ void setup() {
   printConfig();
 
   delay(300);
-  lastTempC = max6675ReadCelsius(PIN_MAX6675_CS_BT);
+  lastBtC = max6675ReadCelsius(PIN_MAX6675_CS_BT);
+  lastEtC = max6675ReadCelsius(PIN_MAX6675_CS_ET);
   lastReadMs = millis();
   renderScreen();
 }
@@ -364,10 +392,11 @@ void loop() {
 
   if (now - lastReadMs >= SENSOR_INTERVAL_MS) {
     lastReadMs = now;
-    lastTempC = max6675ReadCelsius(PIN_MAX6675_CS_BT);
+    lastBtC = max6675ReadCelsius(PIN_MAX6675_CS_BT);
+    lastEtC = max6675ReadCelsius(PIN_MAX6675_CS_ET);
     dirty = true;
   }
-  bool sensorFault = isnan(lastTempC);
+  bool sensorFault = isnan(lastBtC);   // control & fault track BT only; ET is telemetry
 
   // ---- Demand source, by mode ----
   //   MANUAL  : flame follows START directly (min/max band ignored)
@@ -379,8 +408,8 @@ void loop() {
   } else if (!band) {
     demand = true;                                            // MANUAL, or AUTO without a band
   } else if (!sensorFault) {
-    if (lastTempC <= config.automatic.temperature.minC)      demand = true;
-    else if (lastTempC >= config.automatic.temperature.maxC) demand = false;
+    if (lastBtC <= config.automatic.temperature.minC)      demand = true;
+    else if (lastBtC >= config.automatic.temperature.maxC) demand = false;
     // between the thresholds: keep previous demand (hysteresis)
   }
 
@@ -448,7 +477,8 @@ void loop() {
   // Publish live status for the web home dashboard (mirrors the OLED).
   AppStatus st;
   strlcpy(st.state, stateName(state), sizeof(st.state));
-  st.tempC     = lastTempC;
+  st.btC       = lastBtC;
+  st.etC       = lastEtC;
   st.processOn = processOn;
   netPublishStatus(st);
 

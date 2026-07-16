@@ -31,7 +31,8 @@ void netLoop();
 // Live status the `/status` endpoint serves. Published by the control loop.
 struct AppStatus {
   char  state[12] = "IDLE";   // state code: IDLE/RUN/HOLD/LOCKOUT/ESTOP/FAULT
-  float tempC     = NAN;      // BT temperature; NaN on sensor fault
+  float btC       = NAN;      // bean temperature (BT); NaN on sensor fault (drives control)
+  float etC       = NAN;      // air/exhaust temperature (ET); NaN on sensor fault (telemetry)
   bool  processOn = false;    // process START/STOP latch
 };
 void netPublishStatus(const AppStatus &s);

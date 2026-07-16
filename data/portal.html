@@ -37,10 +37,16 @@
         </div>
 
         <div class="field" id="op-auto" hidden>
-          <label>Faixa de temperatura</label>
+          <label>Faixa de temperatura do grão (BT)</label>
           <div class="row2">
-            <input id="min" name="min" type="number" inputmode="decimal" step="1" placeholder="Mín °C">
-            <input id="max" name="max" type="number" inputmode="decimal" step="1" placeholder="Máx °C">
+            <div class="inpunit">
+              <input id="min" name="min" type="number" inputmode="decimal" step="1" placeholder="Mín">
+              <span class="unit-suffix" aria-hidden="true">°C</span>
+            </div>
+            <div class="inpunit">
+              <input id="max" name="max" type="number" inputmode="decimal" step="1" placeholder="Máx">
+              <span class="unit-suffix" aria-hidden="true">°C</span>
+            </div>
           </div>
         </div>
 
@@ -121,7 +127,7 @@
     /* ---------- Operation: control-mode hint ---------- */
     const CTRL_HINTS = {
       manual:  'O operador liga e desliga o queimador com Iniciar/Parar.',
-      auto:    'O queimador regula sozinho pela banda de temperatura abaixo.',
+      auto:    'O queimador regula sozinho pela banda de temperatura do grão (BT) abaixo.',
       artisan: 'Controlado pelo software Artisan via MODBUS (fase 3).',
     };
     function ctrlChanged() {

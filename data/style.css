@@ -70,21 +70,62 @@ h1 { font-size: 1.15rem; font-weight: 700; margin: 0; letter-spacing: -.01em; }
 
 /* --- Status readout (home) ------------------------------------------------- */
 .readout { display: flex; flex-direction: column; gap: .6rem; }
-.pillrow { display: flex; align-items: center; gap: .4rem; align-self: flex-start; }
-.pill {
-  align-self: flex-start;
-  font-size: .7rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
-  padding: .25rem .6rem; border-radius: 999px; background: #f2ede8; color: var(--muted);
+/* Status strip: control mode + network, in plain language with the network name. */
+.strip { display: flex; align-items: stretch; }
+.strip .stat { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: .28rem; }
+.strip .stat + .stat { border-left: 1.5px solid var(--line); margin-left: .95rem; padding-left: .95rem; }
+.stat-label {
+  font-size: .62rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .09em; color: var(--faint);
 }
-.pill.soft { background: transparent; border: 1.5px solid var(--line-2); color: var(--muted); }
+.stat-val { display: flex; align-items: center; gap: .42rem; min-width: 0; font-size: .98rem; font-weight: 700; }
+.stat-val .ico { flex: 0 0 auto; display: inline-flex; color: var(--muted); }
+.stat-val .ico svg { width: 1.05rem; height: 1.05rem; display: block; }
+.stat-val .txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .hero { display: flex; align-items: baseline; gap: .3rem; margin-top: .1rem; }
 .hero .val {
   font-size: 4rem; font-weight: 700; line-height: .95; letter-spacing: -.03em;
   font-variant-numeric: tabular-nums;
 }
 .hero .unit { font-size: 1.5rem; font-weight: 600; color: var(--muted); }
+.hero.small .val  { font-size: 2.1rem; }   /* ET: secondary reading, below the BT hero */
+.hero.small .unit { font-size: 1rem; }
 .chip { display: inline-flex; align-items: center; gap: .5rem; font-size: 1.05rem; font-weight: 700; }
 .chip .dot { width: .62rem; height: .62rem; border-radius: 999px; background: currentColor; flex: 0 0 auto; }
+
+/* --- Control band range (home) — sits under the BT reading it belongs to ---- */
+.range { display: flex; flex-direction: column; gap: .42rem; margin-top: .7rem; }
+.range-head { display: flex; align-items: center; justify-content: space-between; }
+.range-lbl {
+  font-size: .66rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .09em; color: var(--faint);
+}
+.range-now {
+  font-size: .72rem; font-weight: 700; padding: .12rem .5rem; border-radius: 999px;
+  background: #f2ede8; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.range-track { position: relative; height: .5rem; border-radius: 999px; background: var(--line); }
+.range-fill {
+  position: absolute; top: 0; bottom: 0; left: 0; width: 0; border-radius: 999px;
+  background: var(--ember); transition: width .45s ease, background .3s;
+}
+.range-marker {
+  position: absolute; top: 50%; left: 0;
+  width: .9rem; height: .9rem; border-radius: 999px;
+  background: var(--surface); border: 3px solid var(--ember);
+  transform: translate(-50%, -50%); box-shadow: 0 1px 4px #0000002e;
+  transition: left .45s ease, border-color .3s;
+}
+.range-ends {
+  display: flex; justify-content: space-between;
+  font-size: .72rem; font-weight: 600; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+.range-ends b { color: var(--ink); font-weight: 700; }
+/* Semantic state: heating (ember, default) vs satisfied (green). */
+.range.ok   .range-fill   { background: var(--ok); }
+.range.ok   .range-marker { border-color: var(--ok); }
+.range.ok   .range-now    { background: #e7f2ea; color: var(--ok-d); }
+.range.heat .range-now    { background: #fdf0e0; color: var(--ember-d); }
 
 /* --- Buttons --------------------------------------------------------------- */
 .btn {
@@ -116,6 +157,18 @@ input::placeholder { color: var(--faint); }
 input:focus { outline: none; border-color: var(--ember); box-shadow: 0 0 0 3px var(--focus); }
 .row2 { display: flex; gap: .6rem; }
 .row2 > * { flex: 1; min-width: 0; }
+
+/* Input with a fixed unit affix (e.g. °C) — always visible, unlike a placeholder. */
+.inpunit { position: relative; }
+.inpunit input { padding-right: 2.6rem; }
+.inpunit .unit-suffix {
+  position: absolute; top: 50%; right: .8rem; transform: translateY(-50%);
+  color: var(--muted); font-size: .95rem; font-weight: 600; pointer-events: none;
+}
+/* Drop number spinners so the affix sits clean (values are typed, step is coarse). */
+.inpunit input::-webkit-outer-spin-button,
+.inpunit input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.inpunit input[type=number] { -moz-appearance: textfield; }
 .row-scan { display: flex; gap: .5rem; align-items: flex-end; }
 .row-scan > .field { flex: 1; min-width: 0; }
 

@@ -20,7 +20,7 @@ flowchart LR
   subgraph LV["Low-voltage side — ESP32 PCB (3.3V)"]
     ESP[ESP32-WROOM]
     BT[MAX6675 BT]
-    ETS[MAX6675 ET - future]
+    ETS[MAX6675 ET]
     OLED[OLED SSD1306 I2C]
     BTN[Flame-fault button]
     BTN2[START/STOP button]
@@ -57,7 +57,7 @@ flowchart LR
 | Item | Qty | Notes |
 |---|---|---|
 | ESP32-WROOM DevKit | 1 | `esp32dev` |
-| MAX6675 breakout (type-K, SPI) | 2 | BT wired now; ET later |
+| MAX6675 breakout (type-K, SPI) | 2 | BT + ET, both wired (shared SPI, separate CS) |
 | Type-K thermocouple probe | 2 | BT (mass) + ET (air) |
 | OLED SSD1306 0.96" I2C | 1 | addr `0x3C` |
 | INV-27109 flame controller | 1 | 85–250 VAC; drives spark + valve, ionization sensing |
@@ -81,7 +81,11 @@ flowchart LR
 | MAX6675 (BT) | SCK | GPIO18 | `PIN_MAX6675_SCK` | shared clock |
 | MAX6675 (BT) | SO  | GPIO19 | `PIN_MAX6675_SO`  | shared data (MISO) |
 | MAX6675 (BT) | CS  | GPIO5  | `PIN_MAX6675_CS_BT` | |
-| MAX6675 (ET) *(future)* | CS | GPIO17 | `PIN_MAX6675_CS_ET` | shares SCK/SO with BT |
+| MAX6675 (ET) | VCC | 3V3 | — | ⚠️ **3.3V, not 5V** (SO level → ESP input) |
+| MAX6675 (ET) | GND | GND | — | |
+| MAX6675 (ET) | SCK | GPIO18 | `PIN_MAX6675_SCK` | shared clock — same node as BT |
+| MAX6675 (ET) | SO  | GPIO19 | `PIN_MAX6675_SO`  | shared data — same node as BT |
+| MAX6675 (ET) | CS  | GPIO4  | `PIN_MAX6675_CS_ET` | **D4** — ET's own chip-select |
 | OLED SSD1306 | VCC | 3V3 | — | |
 | OLED SSD1306 | GND | GND | — | |
 | OLED SSD1306 | SDA | GPIO21 | `PIN_OLED_SDA` | I2C |

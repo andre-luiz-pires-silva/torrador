@@ -31,7 +31,7 @@
 static const uint8_t PIN_MAX6675_SCK   = 18;  // shared thermocouple clock
 static const uint8_t PIN_MAX6675_SO    = 19;  // shared thermocouple data (MISO)
 static const uint8_t PIN_MAX6675_CS_BT = 5;   // bean temperature (BT) chip-select
-static const uint8_t PIN_MAX6675_CS_ET = 17;  // air/exhaust temperature (ET) chip-select
+static const uint8_t PIN_MAX6675_CS_ET = 4;   // air/exhaust temperature (ET) chip-select (D4)
 
 // SSD1306 0.96" OLED over I2C. These are the ESP32 default Wire pins, so the
 // U8g2 hardware-I2C driver uses them without extra setup.

@@ -27,7 +27,7 @@ The firmware is **white-label**: the same codebase is sold to multiple manufactu
 ### 1.1 Product goal
 Develop an electronic controller for a gas coffee roaster, based on ESP32, capable of:
 1. Monitoring process temperatures (bean mass and air) in real time
-2. Driving the burner and drum motor manually or automatically (simple min/max temperature control)
+2. Driving the burner manually or automatically (simple min/max temperature control)
 3. Providing a local web interface for operation and configuration
 4. (Future phases) Integrating with the Artisan software via MODBUS TCP
 
@@ -42,8 +42,8 @@ V0 is a **proof of concept** to validate the integration of the ESP32 with the r
 
 | Phase | Goal | Hardware |
 |---|---|---|
-| **Phase 1 (V0, current)** | Validate control logic, temperature control, and web interface on a protoboard | ESP32 + 2x MAX6675 (real probes) + 2x relay module **with no load connected** |
-| **Phase 2** | Connect real loads to the already-validated relays | Solenoid valve (burner) + drum motor |
+| **Phase 1 (V0, current)** | Validate control logic, temperature control, and web interface on a protoboard | ESP32 + 2x MAX6675 (real probes) + 1x relay module (burner enable) **with no load connected** |
+| **Phase 2** | Connect real loads to the already-validated relay | Solenoid valve (burner) |
 | **Phase 3** | Artisan integration | MODBUS TCP server on top of the validated base |
 
 ---
@@ -74,7 +74,6 @@ V0 is a **proof of concept** to validate the integration of the ESP32 with the r
   - Below **min** → demand heat (burner on).
   - Above **max** → stop (burner off), with hysteresis between the two thresholds.
 - **Off always wins:** reaching max, a flame fault, STOP, or a sensor fault always turns the burner off.
-- The drum relay is a plain on/off output (no temperature logic).
 
 #### F5 — Configuration persistence
 - The configured min/max temperatures are saved to **LittleFS** and survive ESP restart/power-off
@@ -133,13 +132,13 @@ POWER ON
 | ESP32 (WROOM) | 1 | Central controller | Dual-core and ~520KB RAM for the async web server + control logic simultaneously (and MODBUS in Phase 3) — see section 1.2.1 |
 | MAX6675 (breakout) | 2 | Type-K thermocouple -> digital converter | SPI; range 0–1024°C; resolution 0.25°C; ~1 read every 220ms. Conscious decision to keep MAX6675 (simplicity) instead of MAX31855 (which would add thermocouple fault detection) — revisit in the future |
 | Type-K thermocouple probe | 2 | BT: long/immersion probe in the mass; ET: short probe/air | Verify probe stem length compatible with the drum before purchasing |
-| Relay module | 2 | Relay #1: burner; Relay #2: drum motor | In V0, **no load connected to the contacts** — the module's own indicator LED serves as visual feedback |
+| Relay module | 1 | Burner enable (power-gates the INV-27109) | In V0, **no load connected to the contacts** — the module's own indicator LED serves as visual feedback |
 | Protoboard + jumpers | 1 | Prototype assembly | — |
 
 ### 3.2 Connections (logical definition)
 
 - **MAX6675 (x2):** shared SPI — same SCK and SO for both chips; **individual CS** per chip (2 CS pins)
-- **Relays (x2):** 1 digital GPIO per relay (HIGH/LOW). Note: common relay modules are active-LOW — confirm polarity
+- **Relay (x1):** 1 digital GPIO for the burner-enable relay (HIGH/LOW). Note: common relay modules are active-LOW — confirm polarity
 - Specific ESP pins: to be defined at implementation (avoid boot/strapping pins)
 
 ### 3.3 Firmware architecture
@@ -221,8 +220,12 @@ manual.temperature = {
 ### 4.1 Phase 2 — Real loads
 - **Burner:** **single, on/off** solenoid valve (not proportional). Controlled via **time-proportioning** (time modulation, e.g., 10s cycle) once integrated with Artisan — in V0, control is on/off via rules only
 - **Pending:** solenoid coil voltage (12V/24V/110V/220V) -> defines the final relay/SSR and any driver stage (transistor/optocoupler)
-- **Drum motor:** pending decision on variable speed (AC+VFD or DC+PWM) vs. fixed (on/off). In V0 it is treated as simple on/off
-- **Ventilation:** planned for future phases (PWM on a DC motor), out of V0 scope
+
+> **Out of initial scope — advanced automation.** Drum-motor automation (on/off,
+> and any variable-speed control via AC+VFD or DC+PWM), ventilation control (PWM
+> on a DC motor), and any other more advanced automation are **deliberately out
+> of the initial scope**. V0 controls only the burner. These may be revisited in
+> a later phase; they are intentionally left undefined here to avoid rework.
 
 ### 4.2 Phase 3 — Artisan integration (MODBUS TCP)
 - ESP = MODBUS TCP server/slave; Artisan = client/master
@@ -233,9 +236,6 @@ manual.temperature = {
 | Input Register | Read | 0 | BT (°C × 10) | Planned |
 | Input Register | Read | 1 | ET (°C × 10) | Planned |
 | Holding Register | Write | 0 | Burner power 0–100 (time-proportioning) | Planned |
-| Holding Register | Write | 1 | Ventilation power 0–100 (PWM) | Planned |
-| Holding Register | Write | 2 | Drum speed 0–100 | Reserved |
-| Coil | Write | 0 | Drum on/off (if motor is fixed-speed) | Reserved |
 
 - Temperature values transmitted as integer ×10 (MODBUS uses 16-bit registers, no decimals); Artisan configured with the corresponding divisor
 
@@ -246,10 +246,8 @@ manual.temperature = {
 | # | Pending item | Blocks V0? | Depends on |
 |---|---|---|---|
 | 1 | Burner solenoid coil voltage | No | Physical hardware in hand (Phase 2) |
-| 2 | Drum motor relay coil/load voltage | No | Physical hardware in hand (Phase 2) |
-| 3 | Drum motor: variable or fixed speed | No | Equipment definition (Phase 2/3) |
-| 4 | WebSocket vs. polling on the dashboard | No (decide at start of implementation) | Implementation preference |
-| 5 | HTTP Basic Auth: include in V0 or not | No | Implementation preference |
+| 2 | WebSocket vs. polling on the dashboard | No (decide at start of implementation) | Implementation preference |
+| 3 | HTTP Basic Auth: include in V0 or not | No | Implementation preference |
 
 ---
 

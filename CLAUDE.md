@@ -19,7 +19,7 @@ Single environment (`esp32`); do not introduce a build system other than Platfor
 
 ## What this project is
 
-Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) and air temperature (ET) via 2x MAX6675 (type-K thermocouple, SPI), commands a dedicated gas flame controller (**Inova INV-27109** — which drives the solenoid valve, spark, and ionization flame sensing) and a drum-motor relay, and serves a local web interface for operation and configuration. The ESP enables the flame controller and supervises it via its fault output. Current phase: **V0 — proof of concept** (real actuators with no gas/load connected). Integration with the Artisan software via MODBUS TCP comes in Phase 3 — do not implement yet.
+Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) and air temperature (ET) via 2x MAX6675 (type-K thermocouple, SPI), commands a dedicated gas flame controller (**Inova INV-27109** — which drives the solenoid valve, spark, and ionization flame sensing), and serves a local web interface for operation and configuration. The ESP enables the flame controller and supervises it via its fault output. Current phase: **V0 — proof of concept** (real actuators with no gas/load connected). Integration with the Artisan software via MODBUS TCP comes in Phase 3 — do not implement yet.
 
 **Full requirements, features, and acceptance criteria:** `docs/PRD-torrador-esp32-v0.md`. Consult before implementing any feature.
 
@@ -108,5 +108,4 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 
 - MODBUS TCP / Artisan integration (Phase 3)
 - Burner time-proportioning (Phase 3; in V0 control is on/off via rules)
-- Ventilation control
-- Variable drum motor speed
+- **Drum-motor automation** (on/off or variable speed), **ventilation control**, and any other more advanced automation — deliberately out of the initial scope (V0 drives only the burner). See PRD §4.1.

@@ -70,7 +70,6 @@ flowchart LR
 | Relay module, mains-rated (~10A/250VAC), ESP-driveable | 1 | INV enable (power-gate) |
 | RC snubber (~100Ω + 100nF X2) | 1 | across the valve coil |
 | Push-button | 2 | bench: START/STOP (process) + flame-fault input |
-| Drum-motor relay | 1 | future |
 
 ## 3. Low-voltage side — ESP32 PCB
 
@@ -96,7 +95,11 @@ flowchart LR
 | Flame-fault button | — | 3V3 ↔ GPIO32 | `PIN_FLAME_FAULT` | bench: **active-high**, `INPUT_PULLDOWN` (pressed = flame fault → LOCKOUT). Final HW: the PC817 output above |
 | START/STOP button | — | 3V3 ↔ GPIO33 | `PIN_START_STOP` | bench: **active-high**, `INPUT_PULLDOWN` (toggles the process on/off) |
 | BOOT button (onboard) | — | GPIO0 | `PIN_BOOT_BUTTON` | lockout reset (short press); network reset later |
-| Drum relay *(future)* | IN | GPIO26 | `PIN_RELAY_DRUM` | |
+
+> **Out of initial scope.** Drum-motor automation (on/off or variable speed),
+> ventilation, and other more advanced automations are not wired or controlled in
+> this phase — V0 drives only the burner enable. See the PRD (§4.1) for the scope
+> note; add the drum/ventilation outputs here if a later phase brings them in.
 
 ## 4. Mains side — 110 VAC (INV-27109)
 

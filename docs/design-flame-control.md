@@ -226,7 +226,7 @@ INV 12V GND ─────────── LED cathode           ├─► GP
 ```
 Freed by this architecture: the previous separate spark output (GPIO27) and the
 dedicated ionization front-end input — the INV owns both. Unchanged: MAX6675
-(SCK 18 / SO 19 / CS_BT 5 / CS_ET 4), OLED I2C 21/22, drum relay 26, BOOT 0.
+(SCK 18 / SO 19 / CS_BT 5 / CS_ET 4), OLED I2C 21/22, BOOT 0.
 Pin numbers are **provisional** and live in `board_config.h` (easy to change);
 they will be refined when the PCB is designed. For now the goal is the simplest
 wiring that exercises the control flow.

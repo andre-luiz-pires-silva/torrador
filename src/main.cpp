@@ -95,12 +95,70 @@ static void fmtTemp(char *out, size_t n, float v) {
 static void printConfig() {
   Serial.print(F("[cfg] mode=")); Serial.println(modeName(config.mode));
   char sMin[8], sMax[8];
-  fmtTemp(sMin, sizeof(sMin), config.manual.temperature.minC);
-  fmtTemp(sMax, sizeof(sMax), config.manual.temperature.maxC);
+  fmtTemp(sMin, sizeof(sMin), config.automatic.temperature.minC);
+  fmtTemp(sMax, sizeof(sMax), config.automatic.temperature.maxC);
   Serial.print(F("[cfg] min="));  Serial.print(sMin);
   Serial.print(F("  max="));      Serial.print(sMax);
   Serial.print(F("  -> "));
-  Serial.println(config.manual.temperature.configured() ? F("min/max") : F("flame direct"));
+  Serial.println(config.automatic.temperature.configured() ? F("min/max") : F("flame direct"));
+
+  Serial.print(F("[cfg] net=")); Serial.print(netModeName(config.network.mode));
+  if (config.network.mode == NetMode::STA) {
+    Serial.print(F("  ssid=")); Serial.print(config.network.ssid);
+    Serial.print(F("  pass=")); Serial.print(config.network.password[0] ? F("(set)") : F("(none)"));
+  } else {
+    Serial.print(F("  appass=(set)"));
+  }
+  Serial.print(F("  mdns=")); Serial.println(config.network.mdnsHost);
+}
+
+// `net ap|sta [ssid=..] [pass=..] [mdns=..]` — set every property of one network
+// mode in a single command; omitted properties fall back to defaults (not the
+// current value). `pass` is the AP password in ap mode, the Wi-Fi password in
+// sta mode. Values cannot contain spaces (serial tokenizer limitation). Takes
+// effect on the next restart. Returns true if the config changed.
+static bool handleNet(const char *modeArg) {
+  if (!modeArg) {
+    Serial.println(F("[net] usage: net ap [pass=..] [mdns=..] | net sta ssid=.. [pass=..] [mdns=..]"));
+    return false;
+  }
+  NetMode nm;
+  if (!parseNetMode(modeArg, nm)) { Serial.println(F("[net] error: net ap|sta ...")); return false; }
+
+  // Start from defaults; each key=value token overrides one property.
+  char ssid[33] = "";
+  char pass[65] = "";
+  bool passGiven = false;
+  char mdns[33];  strlcpy(mdns, BRAND_MDNS_HOST, sizeof(mdns));
+
+  for (char *tok = strtok(NULL, " \t"); tok; tok = strtok(NULL, " \t")) {
+    char *eq = strchr(tok, '=');
+    if (!eq) { Serial.print(F("[net] ignoring '")); Serial.print(tok); Serial.println(F("'")); continue; }
+    *eq = 0;
+    const char *key = tok, *val = eq + 1;
+    if      (strcmp(key, "ssid") == 0) strlcpy(ssid, val, sizeof(ssid));
+    else if (strcmp(key, "pass") == 0) { strlcpy(pass, val, sizeof(pass)); passGiven = true; }
+    else if (strcmp(key, "mdns") == 0) strlcpy(mdns, val, sizeof(mdns));
+    else { Serial.print(F("[net] unknown key: ")); Serial.println(key); }
+  }
+
+  if (nm == NetMode::AP) {
+    const char *apPw = passGiven ? pass : BRAND_AP_PASSWORD;
+    if (strlen(apPw) < 8) { Serial.println(F("[net] error: AP pass needs >= 8 chars")); return false; }
+    config.network.mode = NetMode::AP;
+    strlcpy(config.network.apPassword, apPw, sizeof(config.network.apPassword));
+  } else {  // STA
+    if (ssid[0] == '\0') { Serial.println(F("[net] error: net sta requires ssid=..")); return false; }
+    config.network.mode = NetMode::STA;
+    strlcpy(config.network.ssid, ssid, sizeof(config.network.ssid));
+    strlcpy(config.network.password, passGiven ? pass : "", sizeof(config.network.password));
+  }
+  strlcpy(config.network.mdnsHost, mdns, sizeof(config.network.mdnsHost));
+
+  configSave();
+  Serial.println(F("[net] saved — restart to apply"));
+  printConfig();
+  return true;
 }
 
 // Returns true if a command line was handled (so the display can refresh).
@@ -126,7 +184,7 @@ static bool handleLine(char *line) {
     if (!arg) { Serial.println(F("[cfg] usage: min <c> | min -")); return false; }
 
     if (strcmp(arg, "-") == 0 || strcmp(arg, "off") == 0 || strcmp(arg, "clear") == 0) {
-      if (isMin) config.manual.temperature.minC = NAN; else config.manual.temperature.maxC = NAN;
+      if (isMin) config.automatic.temperature.minC = NAN; else config.automatic.temperature.maxC = NAN;
       configSave();
       printConfig();
       return true;
@@ -135,24 +193,27 @@ static bool handleLine(char *line) {
     float v = strtod(arg, &end);
     if (end == arg) { Serial.println(F("[cfg] error: invalid number")); return false; }
 
-    float nmin = isMin ? v : config.manual.temperature.minC;
-    float nmax = isMin ? config.manual.temperature.maxC : v;
+    float nmin = isMin ? v : config.automatic.temperature.minC;
+    float nmax = isMin ? config.automatic.temperature.maxC : v;
     if (!isnan(nmin) && !isnan(nmax) && nmin >= nmax) {
       Serial.println(F("[cfg] error: min must be < max"));
       return false;
     }
-    if (isMin) config.manual.temperature.minC = v; else config.manual.temperature.maxC = v;
+    if (isMin) config.automatic.temperature.minC = v; else config.automatic.temperature.maxC = v;
     configSave();
     printConfig();
     return true;
   }
 
+  if (strcmp(cmd, "net") == 0) return handleNet(arg);
+
   Serial.println(F("[cfg] commands: show | mode manual|auto|artisan | min <c> | max <c> | min - | max -"));
+  Serial.println(F("[cfg]           net ap [pass=..] [mdns=..] | net sta ssid=.. [pass=..] [mdns=..]"));
   return false;
 }
 
 static bool pollSerial() {
-  static char buf[48];
+  static char buf[160];   // room for `net sta ssid=.. pass=..` (SSID 32 + pass 63)
   static uint8_t len = 0;
   bool handled = false;
   while (Serial.available()) {
@@ -176,14 +237,27 @@ static void drawCentered(const char *s, int16_t y) {
   display.drawUTF8((128 - display.getUTF8Width(s)) / 2, y, s);
 }
 
+// Boot splash: brand + a status line reporting what startup is doing (e.g. the
+// network it is connecting to). line2 is optional (a second, smaller line).
+static void showSplash(const char *line1, const char *line2) {
+  display.clearBuffer();
+  display.setFont(u8g2_font_helvB08_tf);
+  drawCentered(BRAND_NAME, line2 ? 22 : 26);
+  display.setFont(u8g2_font_6x10_tf);
+  if (line1) drawCentered(line1, line2 ? 42 : 46);
+  if (line2) drawCentered(line2, 55);
+  display.sendBuffer();
+}
+
 static void renderScreen() {
   display.clearBuffer();
 
   display.setFont(u8g2_font_helvB08_tf);
   drawCentered(BRAND_NAME, 10);
   display.setFont(u8g2_font_4x6_tf);
-  const char *mn = modeName(config.mode);
-  display.drawUTF8(128 - display.getUTF8Width(mn), 6, mn);
+  display.drawUTF8(0, 6, modeName(config.mode));                    // control mode — left
+  const char *cm = netActiveMode();                                 // connection mode — right
+  display.drawUTF8(128 - display.getUTF8Width(cm), 6, cm);
   display.drawHLine(0, 13, 128);
 
   display.setFont(u8g2_font_7x13_tf);
@@ -192,25 +266,30 @@ static void renderScreen() {
   else                  snprintf(t, sizeof(t), "BT: %.1f °C", lastTempC);
   display.drawUTF8(4, 30, t);
 
+  // State labels track the home page (accent-free — the 7x13B font lacks them;
+  // the latch states say BOOT, the physical clear action, not the web wording).
   const char *st;
   switch (state) {
-    case State::IDLE:    st = "Parado";       break;
-    case State::RUN:     st = "Aquecendo";    break;
-    case State::HOLD:    st = "Temp. OK";     break;
-    case State::LOCKOUT: st = "FALHA — BOOT"; break;
-    case State::ESTOP:   st = "EMERG. — BOOT"; break;
-    case State::FAULT:   st = "Sensor BT!";   break;
-    default:             st = "";             break;
+    case State::IDLE:    st = "Parado";          break;
+    case State::RUN:     st = "Aquecendo";       break;
+    case State::HOLD:    st = "Temperatura OK";  break;
+    case State::LOCKOUT: st = "Falha — BOOT";    break;
+    case State::ESTOP:   st = "Emerg. — BOOT";   break;
+    case State::FAULT:   st = "Falha sensor BT"; break;
+    default:             st = "";                break;
   }
   display.setFont(u8g2_font_7x13B_tf);
   display.drawUTF8(4, 47, st);
 
-  char sMin[8], sMax[8], mm[24];
-  fmtTemp(sMin, sizeof(sMin), config.manual.temperature.minC);
-  fmtTemp(sMax, sizeof(sMax), config.manual.temperature.maxC);
-  snprintf(mm, sizeof(mm), "Min:%s  Max:%s", sMin, sMax);
-  display.setFont(u8g2_font_6x12_tf);
-  display.drawUTF8(4, 61, mm);
+  // Faixa only matters in Automático — same rule as the home page.
+  if (config.mode == Mode::AUTO) {
+    char sMin[8], sMax[8], mm[28];
+    fmtTemp(sMin, sizeof(sMin), config.automatic.temperature.minC);
+    fmtTemp(sMax, sizeof(sMax), config.automatic.temperature.maxC);
+    snprintf(mm, sizeof(mm), "Faixa: %s / %s", sMin, sMax);
+    display.setFont(u8g2_font_6x12_tf);
+    display.drawUTF8(4, 61, mm);
+  }
 
   display.sendBuffer();
 }
@@ -235,21 +314,23 @@ void setup() {
   pinMode(PIN_FLAME_FAULT, INPUT_PULLDOWN);
   pinMode(PIN_BOOT_BUTTON, INPUT_PULLUP);
 
+  // Splash reports what startup is about to do, so the wait is transparent.
   display.begin();
-  display.clearBuffer();
-  display.setFont(u8g2_font_helvB08_tf);
-  drawCentered(BRAND_NAME, 28);
-  display.setFont(u8g2_font_6x10_tf);
-  drawCentered("Controle de chama", 44);
-  display.sendBuffer();
+  if (config.network.mode == NetMode::STA && config.network.staProvisioned()) {
+    showSplash("Conectando em", config.network.ssid);
+  } else {
+    showSplash("Ponto de acesso", nullptr);
+  }
 
   // Network: bring up AP (permanent, default) or STA per config, with AP
   // fallback. Started after the INV_ENABLE fail-safe above (safety-first order).
+  // The splash above stays visible while a STA connect blocks (up to ~60 s).
   netBegin();
 
   Serial.println();
   Serial.println(F("[torrador] boot ok — burner control (bench)"));
   Serial.println(F("[torrador] serial: show | mode manual|auto|artisan | min <c> | max <c> | min - | max -"));
+  Serial.println(F("[torrador]         net ap [pass=..] [mdns=..] | net sta ssid=.. [pass=..] [mdns=..]"));
   printConfig();
 
   delay(300);
@@ -292,14 +373,14 @@ void loop() {
   //   MANUAL  : flame follows START directly (min/max band ignored)
   //   AUTO    : min/max hysteresis on BT (flame-direct if the band is unset)
   //   ARTISAN : owned by Artisan over MODBUS (Phase 3) — no source yet
-  bool band = (config.mode == Mode::AUTO) && config.manual.temperature.configured();
+  bool band = (config.mode == Mode::AUTO) && config.automatic.temperature.configured();
   if (config.mode == Mode::ARTISAN) {
     demand = false;                                            // Phase 3: Artisan will drive this
   } else if (!band) {
     demand = true;                                            // MANUAL, or AUTO without a band
   } else if (!sensorFault) {
-    if (lastTempC <= config.manual.temperature.minC)      demand = true;
-    else if (lastTempC >= config.manual.temperature.maxC) demand = false;
+    if (lastTempC <= config.automatic.temperature.minC)      demand = true;
+    else if (lastTempC >= config.automatic.temperature.maxC) demand = false;
     // between the thresholds: keep previous demand (hysteresis)
   }
 

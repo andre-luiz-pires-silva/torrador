@@ -70,11 +70,13 @@ h1 { font-size: 1.15rem; font-weight: 700; margin: 0; letter-spacing: -.01em; }
 
 /* --- Status readout (home) ------------------------------------------------- */
 .readout { display: flex; flex-direction: column; gap: .6rem; }
+.pillrow { display: flex; align-items: center; gap: .4rem; align-self: flex-start; }
 .pill {
   align-self: flex-start;
   font-size: .7rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase;
   padding: .25rem .6rem; border-radius: 999px; background: #f2ede8; color: var(--muted);
 }
+.pill.soft { background: transparent; border: 1.5px solid var(--line-2); color: var(--muted); }
 .hero { display: flex; align-items: baseline; gap: .3rem; margin-top: .1rem; }
 .hero .val {
   font-size: 4rem; font-weight: 700; line-height: .95; letter-spacing: -.03em;

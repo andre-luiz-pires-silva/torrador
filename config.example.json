@@ -1,0 +1,14 @@
+{
+  "_note": "Copy to data/config.json (gitignored) and edit. `pio run -t uploadfs` writes it to /config.json on the device; it is loaded at boot. Delete keys to fall back to firmware defaults. Remove this _note before use.",
+  "mode": "manual",
+  "auto": {
+    "temperature": { "min_c": 180, "max_c": 210 }
+  },
+  "network": {
+    "mode": "sta",
+    "ssid": "MinhaRede",
+    "password": "minhaSenha",
+    "ap_password": "torrador",
+    "mdns_host": "torrador"
+  }
+}

@@ -37,12 +37,11 @@
         </div>
 
         <div class="field" id="op-auto" hidden>
-          <label>Banda de temperatura (BT)</label>
+          <label>Faixa de temperatura</label>
           <div class="row2">
             <input id="min" name="min" type="number" inputmode="decimal" step="1" placeholder="Mín °C">
             <input id="max" name="max" type="number" inputmode="decimal" step="1" placeholder="Máx °C">
           </div>
-          <p class="hint">Deixe em branco para o queimador seguir direto o Iniciar/Parar.</p>
         </div>
 
         <button type="submit" class="btn block ember" id="save-op">Salvar</button>
@@ -81,8 +80,13 @@
           <div id="networks" class="netlist"></div>
           <div class="field">
             <label for="password">Senha da rede</label>
-            <input id="password" name="password" type="password" autocomplete="off"
-                   placeholder="Senha da rede Wi-Fi">
+            <div class="row-scan">
+              <div class="field">
+                <input id="password" name="password" type="password" autocomplete="off"
+                       placeholder="sem senha">
+              </div>
+              <button type="button" id="chpw" class="btn ghost small" hidden>Mudar senha</button>
+            </div>
           </div>
         </div>
 
@@ -146,6 +150,21 @@
     document.querySelectorAll('#netmode input').forEach(r =>
       r.addEventListener('change', () => setNetMode(r.value)));
 
+    /* ---------- STA password: keep saved one behind a "Mudar senha" gate ---------- */
+    // A masked, disabled field is omitted from the form, so the firmware keeps the
+    // stored password. Unlocking clears it so a new one (or none) can be set.
+    function lockPassword() {
+      const p = $('password');
+      p.value = '••••••••'; p.disabled = true;
+      $('chpw').hidden = false;
+    }
+    function unlockPassword() {
+      const p = $('password');
+      p.value = ''; p.disabled = false;
+      $('chpw').hidden = true;
+    }
+    $('chpw').addEventListener('click', () => { unlockPassword(); $('password').focus(); });
+
     /* ---------- Load current config ---------- */
     fetch('/config').then(r => r.json()).then(c => {
       if (!c) return;
@@ -165,6 +184,7 @@
       if (on.ap_password) $('ap_password').value = on.ap_password;
       if (on.mdns) $('mdns').value = on.mdns;
       if (on.ssid) $('ssid').value = on.ssid;
+      if (on.has_password) lockPassword(); else unlockPassword();
       setNetMode(on.mode || 'ap');
     }).catch(() => setNetMode('ap'));
 
@@ -194,6 +214,8 @@
           $('ssid').value = n.ssid;
           document.querySelectorAll('.net.sel').forEach(e => e.classList.remove('sel'));
           row.classList.add('sel');
+          // A different network needs its own password — drop the saved-password mask.
+          if ($('password').disabled) unlockPassword();
           $('password').focus();
         });
         box.appendChild(row);

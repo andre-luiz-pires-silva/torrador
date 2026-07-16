@@ -27,13 +27,16 @@
     </div>
 
     <div class="readout">
-      <span class="pill" id="mode">—</span>
+      <div class="pillrow">
+        <span class="pill" id="mode">—</span>
+        <span class="pill soft" id="net">—</span>
+      </div>
       <div>
         <span class="eyebrow">Temperatura do grão · BT</span>
         <div class="hero"><span class="val" id="temp">--</span><span class="unit">°C</span></div>
       </div>
       <div class="chip" id="state"><span class="dot"></span><span id="stateLabel">—</span></div>
-      <p class="hint" id="band">Banda: — / —</p>
+      <p class="hint" id="band" hidden>Faixa: — / —</p>
     </div>
 
     <div class="actions">
@@ -64,13 +67,17 @@
       try {
         const s = await (await fetch('/status')).json();
         $('mode').textContent = MODES[s.mode] || s.mode;
+        $('net').textContent = s.net || '—';
         $('temp').textContent = (s.temp_c === null || s.temp_c === undefined)
           ? '--' : s.temp_c.toFixed(1);
 
         const st = STATES[s.state] || { label: s.state, color: '#78716c' };
         $('state').style.color = st.color;
         $('stateLabel').textContent = st.label;
-        $('band').textContent = 'Banda: ' + fmt(s.min_c) + ' / ' + fmt(s.max_c);
+
+        // Faixa only matters in Automático.
+        $('band').hidden = (s.mode !== 'auto');
+        $('band').textContent = 'Faixa: ' + fmt(s.min_c) + ' / ' + fmt(s.max_c);
 
         const ss = $('startstop');
         if (s.mode === 'artisan') {

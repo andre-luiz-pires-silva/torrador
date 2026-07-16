@@ -7,9 +7,10 @@
 // -----------------------------------------------------------------------------
 // config.h — central runtime configuration, persisted to LittleFS (/config.json).
 //
-// Organized by operating mode, then by area. The controller has two modes:
-//   * manual  — runs on its own settings (today: min/max temperature control)
-//   * artisan — MODBUS TCP slave, driven by the Artisan software (future)
+// Settings that belong to a specific operating mode live under that mode's group:
+//   * automatic — the ESP regulates BT to a min/max band (JSON key "auto")
+//   * artisan   — MODBUS TCP slave, driven by the Artisan software (future)
+// Manual mode has no settings (the burner follows START/STOP directly).
 //
 // To add a setting: add a field to the right group struct (or a new group),
 // then extend the (de)serialization in config.cpp. Unset temperatures use NAN.
@@ -33,8 +34,8 @@ struct TemperatureConfig {
   bool configured() const { return !isnan(minC) && !isnan(maxC); }
 };
 
-// --- Manual mode: the controller runs on its own configuration ---
-struct ManualConfig {
+// --- Automatic mode: the ESP regulates BT to a min/max band ---
+struct AutoConfig {
   TemperatureConfig temperature;
 };
 
@@ -68,7 +69,7 @@ struct NetworkConfig {
 // --- Root configuration ---
 struct Config {
   Mode          mode = Mode::MANUAL;   // active control authority (default MANUAL)
-  ManualConfig  manual;
+  AutoConfig    automatic;             // AUTO-mode band ("auto" is a reserved word)
   ArtisanConfig artisan;
   NetworkConfig network;
 };

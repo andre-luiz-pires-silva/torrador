@@ -1,6 +1,10 @@
 # PlatformIO build output and cache
 .pio/
 
+# Pre-provisioning seed uploaded to LittleFS by `uploadfs`. Holds Wi-Fi
+# credentials — keep it local. Copy config.example.json to create it.
+data/config.json
+
 # PlatformIO regenerates the VS Code IntelliSense config; keep only the
 # extension recommendations under version control.
 .vscode/*

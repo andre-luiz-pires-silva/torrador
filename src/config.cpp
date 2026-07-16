@@ -40,11 +40,11 @@ bool parseNetMode(const char *s, NetMode &out) {
 // --- Serialization (one block per group; extend as groups are added) ---
 static void toJson(JsonDocument &doc) {
   doc["mode"] = modeName(config.mode);
-  // manual mode
-  JsonObject manual = doc["manual"].to<JsonObject>();
-  JsonObject t = manual["temperature"].to<JsonObject>();
-  if (!isnan(config.manual.temperature.minC)) t["min_c"] = config.manual.temperature.minC;
-  if (!isnan(config.manual.temperature.maxC)) t["max_c"] = config.manual.temperature.maxC;
+  // automatic mode (BT band)
+  JsonObject autom = doc["auto"].to<JsonObject>();
+  JsonObject t = autom["temperature"].to<JsonObject>();
+  if (!isnan(config.automatic.temperature.minC)) t["min_c"] = config.automatic.temperature.minC;
+  if (!isnan(config.automatic.temperature.maxC)) t["max_c"] = config.automatic.temperature.maxC;
   // (unset values are omitted; they read back as NAN)
   // artisan mode: no fields yet
   // network provisioning
@@ -60,10 +60,10 @@ static void fromJson(JsonDocument &doc) {
   Mode m;
   config.mode = parseMode(doc["mode"] | "", m) ? m : Mode::MANUAL;
 
-  JsonVariant minC = doc["manual"]["temperature"]["min_c"];
-  JsonVariant maxC = doc["manual"]["temperature"]["max_c"];
-  config.manual.temperature.minC = minC.isNull() ? NAN : minC.as<float>();
-  config.manual.temperature.maxC = maxC.isNull() ? NAN : maxC.as<float>();
+  JsonVariant minC = doc["auto"]["temperature"]["min_c"];
+  JsonVariant maxC = doc["auto"]["temperature"]["max_c"];
+  config.automatic.temperature.minC = minC.isNull() ? NAN : minC.as<float>();
+  config.automatic.temperature.maxC = maxC.isNull() ? NAN : maxC.as<float>();
 
   NetMode nm;
   config.network.mode = parseNetMode(doc["network"]["mode"] | "", nm) ? nm : NetMode::AP;

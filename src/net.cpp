@@ -31,6 +31,8 @@ NetCommand netTakeCommand() {
   return c;
 }
 
+const char *netActiveMode() { return apActive ? "AP" : "STA"; }
+
 // --- Route handlers -----------------------------------------------------------
 
 // Brand name for any page (never hardcoded — white-label rule).
@@ -52,16 +54,19 @@ static void handleConfig(AsyncWebServerRequest *req) {
 
   JsonObject op = doc["operation"].to<JsonObject>();
   op["mode"] = modeName(config.mode);
-  float mn = config.manual.temperature.minC, mx = config.manual.temperature.maxC;
+  float mn = config.automatic.temperature.minC, mx = config.automatic.temperature.maxC;
   if (isnan(mn)) op["min_c"] = nullptr; else op["min_c"] = mn;
   if (isnan(mx)) op["max_c"] = nullptr; else op["max_c"] = mx;
 
   JsonObject nw = doc["network"].to<JsonObject>();
-  nw["mode"]        = netModeName(config.network.mode);
-  nw["ssid"]        = config.network.ssid;
-  nw["ap_ssid"]     = BRAND_AP_SSID;
-  nw["ap_password"] = config.network.apPassword;
-  nw["mdns"]        = config.network.mdnsHost;
+  nw["mode"]         = netModeName(config.network.mode);
+  nw["ssid"]         = config.network.ssid;
+  nw["ap_ssid"]      = BRAND_AP_SSID;
+  nw["ap_password"]  = config.network.apPassword;
+  nw["mdns"]         = config.network.mdnsHost;
+  // Never expose the STA password; just say whether one is stored, so the UI can
+  // show a masked placeholder and let the user keep it.
+  nw["has_password"] = (config.network.password[0] != '\0');
 
   serializeJson(doc, *res);
   req->send(res);
@@ -83,8 +88,8 @@ static void handleOperation(AsyncWebServerRequest *req) {
     if (!parseMode(req->getParam("mode", true)->value().c_str(), desired)) { reject("mode"); return; }
   }
 
-  float nmin = config.manual.temperature.minC;
-  float nmax = config.manual.temperature.maxC;
+  float nmin = config.automatic.temperature.minC;
+  float nmax = config.automatic.temperature.maxC;
   auto readTemp = [&](const char *name, float &dst) -> bool {
     if (!req->hasParam(name, true)) return true;   // absent => keep current
     String v = req->getParam(name, true)->value(); v.trim();
@@ -100,8 +105,8 @@ static void handleOperation(AsyncWebServerRequest *req) {
   if (desired == Mode::AUTO && (isnan(nmin) || isnan(nmax))) { reject("band"); return; }
 
   config.mode = desired;
-  config.manual.temperature.minC = nmin;
-  config.manual.temperature.maxC = nmax;
+  config.automatic.temperature.minC = nmin;
+  config.automatic.temperature.maxC = nmax;
   bool ok = configSave();
   Serial.print(F("[net] operation saved: mode=")); Serial.println(modeName(config.mode));
 
@@ -187,8 +192,13 @@ static void handleSave(AsyncWebServerRequest *req) {
   config.network.mode = nm;
   strlcpy(config.network.apPassword, apPw.c_str(),                 sizeof(config.network.apPassword));
   strlcpy(config.network.ssid,       param("ssid", "").c_str(),     sizeof(config.network.ssid));
-  strlcpy(config.network.password,   param("password", "").c_str(), sizeof(config.network.password));
   strlcpy(config.network.mdnsHost,   param("mdns", BRAND_MDNS_HOST).c_str(), sizeof(config.network.mdnsHost));
+  // STA password: update only when the field was actually submitted. A disabled
+  // (masked) field is omitted from the form, which means "keep the saved one".
+  if (req->hasParam("password", true)) {
+    strlcpy(config.network.password, req->getParam("password", true)->value().c_str(),
+            sizeof(config.network.password));
+  }
 
   bool ok = configSave();
   Serial.print(F("[net] saved: mode="));
@@ -213,12 +223,13 @@ static void handleStatus(AsyncWebServerRequest *req) {
   AsyncResponseStream *res = req->beginResponseStream("application/json");
   JsonDocument doc;
   doc["mode"]       = modeName(config.mode);
+  doc["net"]        = netActiveMode();       // "AP" / "STA" (actual interface)
   doc["state"]      = pubStatus.state;
   doc["process_on"] = pubStatus.processOn;
   if (isnan(pubStatus.tempC)) doc["temp_c"] = nullptr; else doc["temp_c"] = pubStatus.tempC;
 
-  float mn = config.manual.temperature.minC;
-  float mx = config.manual.temperature.maxC;
+  float mn = config.automatic.temperature.minC;
+  float mx = config.automatic.temperature.maxC;
   if (isnan(mn)) doc["min_c"] = nullptr; else doc["min_c"] = mn;
   if (isnan(mx)) doc["max_c"] = nullptr; else doc["max_c"] = mx;
 

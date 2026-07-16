@@ -41,3 +41,7 @@ void netPublishStatus(const AppStatus &s);
 //   CLEAR_LATCH — same effect as BOOT: release a latched LOCKOUT/ESTOP
 enum class NetCommand : uint8_t { NONE, START_STOP, CLEAR_LATCH };
 NetCommand netTakeCommand();
+
+// Active interface, for the display: "AP" or "STA". Reflects reality — a STA
+// connect that failed has fallen back to AP.
+const char *netActiveMode();

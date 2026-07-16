@@ -416,6 +416,15 @@ void loop() {
   State prev = state;
 
   // ---- Global pre-empts ----
+  // A mode change cuts the flame in every mode: switching control authority must
+  // not inherit a running burner. Latched safety states keep their latch.
+  static Mode lastMode = config.mode;
+  if (config.mode != lastMode) {
+    lastMode = config.mode;
+    processOn = false;
+    if (state != State::LOCKOUT && state != State::ESTOP) state = State::IDLE;
+    Serial.println(F("[torrador] mode changed — burner off"));
+  }
   // BOOT clears a latched safety stop (INV-fault lockout or Artisan e-stop).
   if (bootEdge && (state == State::LOCKOUT || state == State::ESTOP)) {
     state = State::IDLE; processOn = false;

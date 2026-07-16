@@ -47,6 +47,11 @@ static void toJson(JsonDocument &doc) {
   if (!isnan(config.automatic.temperature.maxC)) t["max_c"] = config.automatic.temperature.maxC;
   // (unset values are omitted; they read back as NAN)
   // artisan mode: no fields yet
+  // safety: independent over-temp cutoff (applies in every mode)
+  if (!isnan(config.safety.hardMaxC)) {
+    JsonObject safety = doc["safety"].to<JsonObject>();
+    safety["hard_max_temp_c"] = config.safety.hardMaxC;
+  }
   // network provisioning
   JsonObject net = doc["network"].to<JsonObject>();
   net["mode"]        = netModeName(config.network.mode);
@@ -64,6 +69,9 @@ static void fromJson(JsonDocument &doc) {
   JsonVariant maxC = doc["auto"]["temperature"]["max_c"];
   config.automatic.temperature.minC = minC.isNull() ? NAN : minC.as<float>();
   config.automatic.temperature.maxC = maxC.isNull() ? NAN : maxC.as<float>();
+
+  JsonVariant hardMax = doc["safety"]["hard_max_temp_c"];
+  config.safety.hardMaxC = hardMax.isNull() ? NAN : hardMax.as<float>();
 
   NetMode nm;
   config.network.mode = parseNetMode(doc["network"]["mode"] | "", nm) ? nm : NetMode::AP;

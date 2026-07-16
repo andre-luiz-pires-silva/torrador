@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <U8g2lib.h>
+#include <esp_task_wdt.h>
 #include "board_config.h"
 #include "branding.h"
 #include "config.h"
@@ -111,6 +112,10 @@ static void printConfig() {
   Serial.print(F("  -> "));
   Serial.println(config.automatic.temperature.configured() ? F("min/max") : F("flame direct"));
 
+  char sHard[8];
+  fmtTemp(sHard, sizeof(sHard), config.safety.hardMaxC);
+  Serial.print(F("[cfg] hard_max=")); Serial.println(sHard);
+
   Serial.print(F("[cfg] net=")); Serial.print(netModeName(config.network.mode));
   if (config.network.mode == NetMode::STA) {
     Serial.print(F("  ssid=")); Serial.print(config.network.ssid);
@@ -214,9 +219,26 @@ static bool handleLine(char *line) {
     return true;
   }
 
+  if (strcmp(cmd, "hardmax") == 0) {
+    if (!arg) { Serial.println(F("[cfg] usage: hardmax <c> | hardmax -")); return false; }
+    if (strcmp(arg, "-") == 0 || strcmp(arg, "off") == 0 || strcmp(arg, "clear") == 0) {
+      config.safety.hardMaxC = NAN;
+      configSave();
+      printConfig();
+      return true;
+    }
+    char *end;
+    float v = strtod(arg, &end);
+    if (end == arg) { Serial.println(F("[cfg] error: invalid number")); return false; }
+    config.safety.hardMaxC = v;
+    configSave();
+    printConfig();
+    return true;
+  }
+
   if (strcmp(cmd, "net") == 0) return handleNet(arg);
 
-  Serial.println(F("[cfg] commands: show | mode manual|auto|artisan | min <c> | max <c> | min - | max -"));
+  Serial.println(F("[cfg] commands: show | mode manual|auto|artisan | min <c> | max <c> | min - | max - | hardmax <c> | hardmax -"));
   Serial.println(F("[cfg]           net ap [pass=..] [mdns=..] | net sta ssid=.. [pass=..] [mdns=..]"));
   return false;
 }
@@ -354,9 +376,17 @@ void setup() {
   // The splash above stays visible while a STA connect blocks (up to ~60 s).
   netBegin();
 
+  // Watchdog: subscribe this (control) loop to the ESP32 task WDT. The Arduino
+  // core inits the TWDT at boot with panic=reboot and a 5 s timeout (sdkconfig
+  // CONFIG_ESP_TASK_WDT_*). If the loop ever stalls (e.g. in RUN), the WDT reboots
+  // — and setup() forces PIN_INV_ENABLE LOW first thing, so a stall closes the
+  // burner (fail-safe, safety invariant §9.6). Subscribed AFTER netBegin() so the
+  // blocking STA connect (up to 60 s) never counts against us; fed once per loop().
+  esp_task_wdt_add(NULL);
+
   Serial.println();
   Serial.println(F("[torrador] boot ok — burner control (bench)"));
-  Serial.println(F("[torrador] serial: show | mode manual|auto|artisan | min <c> | max <c> | min - | max -"));
+  Serial.println(F("[torrador] serial: show | mode manual|auto|artisan | min <c> | max <c> | min - | max - | hardmax <c> | hardmax -"));
   Serial.println(F("[torrador]         net ap [pass=..] [mdns=..] | net sta ssid=.. [pass=..] [mdns=..]"));
   printConfig();
 
@@ -370,6 +400,10 @@ void setup() {
 void loop() {
   uint32_t now = millis();
   bool dirty = false;
+
+  // Feed the task watchdog: reaching here proves the loop is alive. A stall past
+  // the WDT timeout reboots (→ enable forced LOW in setup()). See setup().
+  esp_task_wdt_reset();
 
   // ---- Network ----
   // Captive-portal DNS pump + deferred post-save reboot. Non-blocking.
@@ -432,6 +466,16 @@ void loop() {
   // Sensor fault fails safe, except while latched (LOCKOUT/ESTOP need BOOT).
   if (sensorFault && state != State::LOCKOUT && state != State::ESTOP) {
     state = State::FAULT; processOn = false;
+  }
+  // Independent over-temperature cutoff: a hard ceiling on BT that holds in every
+  // mode (manual/auto/artisan), above and beyond the AUTO band — off always wins.
+  // Latches LOCKOUT: over-temp is a serious event, so clearing needs a deliberate
+  // BOOT press. A NaN BT (sensor fault) never trips this — the comparison is false.
+  if (config.safety.configured() && !sensorFault &&
+      lastBtC >= config.safety.hardMaxC &&
+      state != State::LOCKOUT && state != State::ESTOP) {
+    state = State::LOCKOUT; processOn = false;
+    Serial.println(F("[torrador] HARD-MAX over-temperature — LOCKOUT"));
   }
 
   if (config.mode == Mode::ARTISAN) {

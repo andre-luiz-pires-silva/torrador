@@ -57,6 +57,9 @@ static void handleConfig(AsyncWebServerRequest *req) {
   float mn = config.automatic.temperature.minC, mx = config.automatic.temperature.maxC;
   if (isnan(mn)) op["min_c"] = nullptr; else op["min_c"] = mn;
   if (isnan(mx)) op["max_c"] = nullptr; else op["max_c"] = mx;
+  // Independent over-temperature cutoff — applies in every mode.
+  float hm = config.safety.hardMaxC;
+  if (isnan(hm)) op["hard_max_c"] = nullptr; else op["hard_max_c"] = hm;
 
   JsonObject nw = doc["network"].to<JsonObject>();
   nw["mode"]         = netModeName(config.network.mode);
@@ -104,9 +107,14 @@ static void handleOperation(AsyncWebServerRequest *req) {
   // AUTO regulates on the band, so both limits are required.
   if (desired == Mode::AUTO && (isnan(nmin) || isnan(nmax))) { reject("band"); return; }
 
+  // Independent over-temperature cutoff (all modes). Blank => disabled.
+  float nhard = config.safety.hardMaxC;
+  if (!readTemp("hard_max", nhard)) { reject("hard_max"); return; }
+
   config.mode = desired;
   config.automatic.temperature.minC = nmin;
   config.automatic.temperature.maxC = nmax;
+  config.safety.hardMaxC = nhard;
   bool ok = configSave();
   Serial.print(F("[net] operation saved: mode=")); Serial.println(modeName(config.mode));
 

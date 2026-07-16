@@ -32,7 +32,7 @@ Develop an electronic controller for a gas coffee roaster, based on ESP32, capab
 4. (Future phases) Integrating with the Artisan software via MODBUS TCP
 
 ### 1.2 V0 scope
-V0 is a **proof of concept** to validate the integration of the ESP32 with the roaster. It **does not include** Artisan integration (Phase 3). It focuses on: real sensors, real relays (no load connected), web interface, min/max temperature control, and AP-based network provisioning.
+V0 is a **proof of concept** to validate the integration of the ESP32 with the roaster. It focuses on: real sensors, real relays (no load connected), web interface, three control modes (manual / automatic / Artisan), min/max temperature control, an independent over-temperature cutoff, a loop watchdog, and AP-based network provisioning. The **Artisan integration itself** is developed in **Phase 2** (still dry, on top of this validated base); **real gas actuation** is deferred to the **final phase (Phase 3)**.
 
 ### 1.2.1 Platform
 - **Target:** ESP32 (WROOM), single board. Built with PlatformIO (one `esp32` environment; async transport `AsyncTCP`).
@@ -40,11 +40,19 @@ V0 is a **proof of concept** to validate the integration of the ESP32 with the r
 
 ### 1.3 Phase roadmap
 
+> **Ordering note (2026-07):** the roadmap was reordered to bring **Artisan
+> integration forward (Phase 2)**, ahead of the **real gas-actuation assembly
+> (Phase 3)**. Rationale: Artisan integration is pure firmware/network work on top
+> of the already-validated bench base (it commands the same burner-enable output,
+> dry, with the LED/relay + fault button) and needs no gas. Assembling the real
+> INV-27109 + gas valve last de-risks the project — all control logic *and* the
+> Artisan link are validated dry before any combustion.
+
 | Phase | Goal | Hardware |
 |---|---|---|
-| **Phase 1 (V0, current)** | Validate control logic, temperature control, and web interface on a protoboard | ESP32 + 2x MAX6675 (real probes) + 1x relay module (burner enable) **with no load connected** |
-| **Phase 2** | Connect real loads to the already-validated relay | Solenoid valve (burner) |
-| **Phase 3** | Artisan integration | MODBUS TCP server on top of the validated base |
+| **Phase 1 (V0, done)** | Validate control logic, the three control modes, min/max temperature control, the over-temperature cutoff + watchdog, the web interface, and network provisioning on a protoboard | ESP32 + 2x MAX6675 (real probes) + 1x relay module (burner enable) **with no load connected** |
+| **Phase 2 — Artisan integration** | MODBUS TCP slave on top of the validated base, **still dry** (no gas) | Same bench hardware (burner enable = LED/relay, no load) |
+| **Phase 3 — Real system / gas** | Assemble the real flame controller and gas path; real burner actuation | Real INV-27109 + 110 VAC solenoid valve (NC) + RC snubber + mains-rated enable relay + PC817 opto |
 
 ---
 
@@ -62,11 +70,13 @@ V0 is a **proof of concept** to validate the integration of the ESP32 with the r
 - A single **START/STOP** control toggles the process on/off (the operator's run/stop).
 - On STOP — and at boot — the burner is off. A latched fault (**LOCKOUT**) is cleared with the BOOT button.
 
-#### F3 — Manual mode
-- The controller runs in **manual** mode — it operates on its own settings. (The other mode, **Artisan** / MODBUS TCP slave, is Phase 3.)
-- While the process is running, the manual-mode behaviour depends on configuration:
-  - **min/max set** → the ESP regulates the burner to keep the temperature within the band (F4).
-  - **min/max not set** → the flame follows START/STOP directly (on while running, off when stopped).
+#### F3 — Control modes (manual / automatic / Artisan)
+The controller has **three explicit control modes** (who owns the heat demand). The mode is selected in the web UI (and over serial); switching mode always cuts the burner first — control authority must not inherit a running flame.
+- **Manual** — the operator drives the burner directly with START/STOP; the flame follows START (on while running, off when stopped). The min/max band is ignored in this mode.
+- **Automatic** — the ESP regulates the burner to a min/max band on BT (F4); START/STOP runs/stops the process. Both limits are required to enter this mode.
+- **Artisan** — the Artisan software owns the demand over MODBUS TCP (**Phase 2**). The front START/STOP button acts as a latched **emergency stop**.
+
+Independent of the mode, the over-temperature cutoff (F4a), flame fault (LOCKOUT), and sensor fault always cut the burner — off always wins.
 
 #### F4 — Temperature band (min/max)
 > The gas-burner behaviour behind this feature (ignition, flame supervision, and the min/max regulation) is specified in `docs/design-flame-control.md`.
@@ -74,6 +84,14 @@ V0 is a **proof of concept** to validate the integration of the ESP32 with the r
   - Below **min** → demand heat (burner on).
   - Above **max** → stop (burner off), with hysteresis between the two thresholds.
 - **Off always wins:** reaching max, a flame fault, STOP, or a sensor fault always turns the burner off.
+
+#### F4a — Independent over-temperature cutoff (`hard_max_temp_c`)
+- A **hard ceiling on BT**, independent of the automatic min/max band, that applies in **every** mode (manual / automatic / Artisan). Optional — leave unset to disable.
+- Reaching it **latches a LOCKOUT** (burner off, cleared only with the BOOT button) — over-temperature is a serious event, above and beyond normal regulation. This is a safety backstop that also protects against a remote master (Artisan) commanding heat.
+- Configurable in the web UI (Operation) and over serial (`hardmax <c>` / `hardmax -`); persisted to LittleFS.
+
+#### F4b — Loop watchdog
+- A task watchdog reboots the ESP if the control loop stalls; on reboot the burner-enable output is forced off before anything else, so a stall closes the burner (fail-safe).
 
 #### F5 — Configuration persistence
 - The configured min/max temperatures are saved to **LittleFS** and survive ESP restart/power-off
@@ -109,9 +127,9 @@ POWER ON
 
 | Section | Elements |
 |---|---|
-| **Dashboard** | Real-time BT and ET reading; current burner state (idle/heating/hold/lockout); process running indicator |
-| **Control** | START/STOP the process; reset a lockout |
-| **Temperature** | Set the min and max temperatures (°C) for the burner band; leave blank to keep the flame following START/STOP |
+| **Dashboard** | Real-time BT and ET reading; current control mode; current burner state (idle/heating/hold/lockout/estop/sensor-fault); process running indicator; START/STOP the process (or emergency stop in Artisan); reset a lockout |
+| **Settings › Operation** | Select the control mode (manual / automatic / Artisan); set the min/max band (°C) for automatic mode; set the independent over-temperature cutoff (°C, blank = disabled) |
+| **Settings › Network** | AP/STA mode, Wi-Fi scan + credentials, mDNS name, AP password (see F6) |
 
 *(Note: user-facing labels are in Portuguese (BR) for V0 per the Language Policy; the table above describes function in English.)*
 
@@ -129,7 +147,7 @@ POWER ON
 
 | Component | Qty | Function | Notes |
 |---|---|---|---|
-| ESP32 (WROOM) | 1 | Central controller | Dual-core and ~520KB RAM for the async web server + control logic simultaneously (and MODBUS in Phase 3) — see section 1.2.1 |
+| ESP32 (WROOM) | 1 | Central controller | Dual-core and ~520KB RAM for the async web server + control logic simultaneously (and MODBUS in Phase 2) — see section 1.2.1 |
 | MAX6675 (breakout) | 2 | Type-K thermocouple -> digital converter | SPI; range 0–1024°C; resolution 0.25°C; ~1 read every 220ms. Conscious decision to keep MAX6675 (simplicity) instead of MAX31855 (which would add thermocouple fault detection) — revisit in the future |
 | Type-K thermocouple probe | 2 | BT: long/immersion probe in the mass; ET: short probe/air | Verify probe stem length compatible with the drum before purchasing |
 | Relay module | 1 | Burner enable (power-gates the INV-27109) | In V0, **no load connected to the contacts** — the module's own indicator LED serves as visual feedback |
@@ -148,35 +166,39 @@ POWER ON
 1. **Sensor reading:** periodic read cycle of the two MAX6675 via SPI (respecting the chip's ~220ms minimum interval)
 2. **Temperature control:** min/max hysteresis on BT per read cycle:
    ```
-   If min/max not both set -> demand heat (flame direct)
-   Else:  BT <= min -> demand heat;  BT >= max -> stop;  in between -> keep state
-   Off always wins (max reached, flame fault, STOP, sensor fault -> burner off)
+   Demand source by mode: manual -> follow START; auto -> min/max band; artisan -> MODBUS
+   Auto band:  BT <= min -> demand heat;  BT >= max -> stop;  in between -> keep state
+   Off always wins (max reached, over-temp cutoff, flame fault, STOP/e-stop, sensor fault -> burner off)
    ```
 3. **Web server:** ESPAsyncWebServer + async TCP (async — mandatory so as not to block the other tasks)
 4. **File system:** LittleFS for (a) interface static files (HTML/CSS/JS) and (b) settings persistence (min/max)
 5. **mDNS:** ESPmDNS library, registering `torrador.local`
 6. **Network provisioning:** AP + captive portal state machine (see F6)
 
-**Configuration (logical model):** grouped by operating mode (see `docs/design-flame-control.md` §7)
+**Configuration (logical model):** a top-level `mode` plus per-mode and safety groups (see `docs/design-flame-control.md` §7 and `src/config.h`)
 ```
-manual.temperature = {
-  min_c: number | null,   // null = not configured
-  max_c: number | null    // min_c < max_c
+mode: "manual" | "auto" | "artisan"   // active control authority (default "manual")
+auto.temperature = {                   // used only by "auto" mode
+  min_c: number | null,                // null = not configured
+  max_c: number | null                 // min_c < max_c; both required for "auto"
 }
-// Either unset => burner stays on directly (flame direct)
+safety.hard_max_temp_c: number | null  // independent over-temp cutoff, ALL modes; null = disabled
+artisan: { ... }                       // MODBUS options (Phase 2; scaffolded, no fields yet)
 ```
 
 **Global system state:**
 ```
 {
-  mode: "manual",          // "manual" now; "artisan" (MODBUS slave) is Phase 3
-  process: bool,           // START/STOP
-  burnerState: "idle" | "run" | "hold" | "lockout" | "fault",
-  temperature: { min_c, max_c },   // manual-mode config (see above)
+  mode: "manual" | "auto" | "artisan",
+  process: bool,           // START/STOP latch
+  burnerState: "idle" | "run" | "hold" | "lockout" | "estop" | "fault",
+  temperature: { min_c, max_c },        // auto-mode band
+  hard_max_c: number | null,            // over-temp cutoff
   bt: float,               // last reading (°C)
   et: float                // last reading (°C)
 }
 ```
+- `estop` is the latched emergency stop (Artisan mode, front button); `lockout` is a latched flame/over-temp fault; both clear only with BOOT.
 
 ### 3.4 HTTP API (routes)
 
@@ -184,12 +206,16 @@ manual.temperature = {
 
 | Route | Method | Function |
 |---|---|---|
-| `/` | GET | Main page (dashboard, served from LittleFS) |
-| `/status` | GET | JSON: BT, ET, burner state, process on/off |
-| `/process` | POST | START/STOP the process (run/stop) |
-| `/config/temperature` | GET | Return the current min/max (JSON) |
-| `/config/temperature` | POST | Save min/max (or clear) and persist to LittleFS |
-| `/network/reset` | POST | Erase network credentials and restart in configuration mode (AP) |
+| `/` | GET | Dashboard page (served from LittleFS) |
+| `/settings` | GET | Settings page (operation + network) |
+| `/status` | GET | JSON: mode, net, ssid, BT, ET, burner state, process on/off, band, hard_max |
+| `/brand` | GET | JSON: product name (white-label) |
+| `/config` | GET | JSON bootstrap for the settings page (operation + network) |
+| `/command` | POST | `cmd=startstop` (START/STOP or e-stop) or `cmd=clear` (reset a latch) |
+| `/operation` | POST | Save control mode + min/max band + hard_max cutoff (applies live, persisted) |
+| `/save` | POST | Save network config (mode/SSID/password/AP password/mDNS) and reboot |
+
+*(Network reset — F6 mechanism 3 — is done from the settings page by switching to AP mode, which reboots the device as its own access point.)*
 
 **Configuration mode (AP):**
 
@@ -217,9 +243,24 @@ manual.temperature = {
 
 *The definitions below have already been discussed and should be considered in the V0 design to avoid rework, but they are **not part of the V0 scope**.*
 
-### 4.1 Phase 2 — Real loads
-- **Burner:** **single, on/off** solenoid valve (not proportional). Controlled via **time-proportioning** (time modulation, e.g., 10s cycle) once integrated with Artisan — in V0, control is on/off via rules only
-- **Pending:** solenoid coil voltage (12V/24V/110V/220V) -> defines the final relay/SSR and any driver stage (transistor/optocoupler)
+### 4.1 Phase 2 — Artisan integration (MODBUS TCP)
+- ESP = MODBUS TCP server/slave; Artisan = client/master. Built on top of the validated bench base, **still dry** (no gas): Artisan drives the same burner-enable output the manual/auto modes already drive.
+- The `artisan` control mode is already scaffolded end-to-end (mode selection, UI, front-button emergency stop); this phase adds the MODBUS transport and wires the burner-power register into the burner demand.
+- Register map already defined:
+
+| Register | Type | Address | Content | Status |
+|---|---|---|---|---|
+| Input Register | Read | 0 | BT (°C × 10) | Planned |
+| Input Register | Read | 1 | ET (°C × 10) | Planned |
+| Holding Register | Write | 0 | Burner power 0–100 | Planned |
+
+- Temperature values transmitted as integer ×10 (MODBUS uses 16-bit registers, no decimals); Artisan configured with the corresponding divisor.
+- **Burner power → actuation (this phase): simple on/off by threshold** (`power > threshold` ⇒ demand heat). The burner is a single on/off valve, so proportional **time-proportioning is deferred to Phase 3** — with the real INV-27109, every gas on-cycle re-runs the ignition sequence, so the modulation strategy must be designed against the real controller's behaviour, not a bench LED.
+- **Safety precedence still holds:** the over-temperature cutoff (`hard_max_temp_c`), a flame fault (LOCKOUT), a sensor fault, and the front-button emergency stop (ESTOP) all cut the burner above whatever Artisan commands — off always wins.
+
+### 4.2 Phase 3 — Real system / gas (real loads)
+- **Burner:** **single, on/off** solenoid valve (not proportional), **110 VAC, normally-closed** (already sourced — see `docs/design-flame-control.md` §12). Driven by the real INV-27109; the ESP enable relay power-gates the INV's mains (power off ⇒ gas closes).
+- This phase assembles the real flame controller and gas path (INV-27109, RC snubber across the valve coil, mains-rated enable relay, PC817 fault opto) and validates real ignition/flame supervision. Optional: revisit burner-power modulation (time-proportioning) now that the INV's re-ignition-per-cycle behaviour can be measured.
 
 > **Out of initial scope — advanced automation.** Drum-motor automation (on/off,
 > and any variable-speed control via AC+VFD or DC+PWM), ventilation control (PWM
@@ -227,26 +268,14 @@ manual.temperature = {
 > of the initial scope**. V0 controls only the burner. These may be revisited in
 > a later phase; they are intentionally left undefined here to avoid rework.
 
-### 4.2 Phase 3 — Artisan integration (MODBUS TCP)
-- ESP = MODBUS TCP server/slave; Artisan = client/master
-- Register map already defined:
-
-| Register | Type | Address | Content | Status |
-|---|---|---|---|---|
-| Input Register | Read | 0 | BT (°C × 10) | Planned |
-| Input Register | Read | 1 | ET (°C × 10) | Planned |
-| Holding Register | Write | 0 | Burner power 0–100 (time-proportioning) | Planned |
-
-- Temperature values transmitted as integer ×10 (MODBUS uses 16-bit registers, no decimals); Artisan configured with the corresponding divisor
-
 ---
 
 ## 5. Registered Pending Items
 
 | # | Pending item | Blocks V0? | Depends on |
 |---|---|---|---|
-| 1 | Burner solenoid coil voltage | No | Physical hardware in hand (Phase 2) |
-| 2 | WebSocket vs. polling on the dashboard | No (decide at start of implementation) | Implementation preference |
+| 1 | ~~Burner solenoid coil voltage~~ **Resolved: 110 VAC, normally-closed** (design-flame-control §12) | No | — |
+| 2 | WebSocket vs. polling on the dashboard — resolved: **polling** `/status` every 1 s | No | — |
 | 3 | HTTP Basic Auth: include in V0 or not | No | Implementation preference |
 
 ---
@@ -255,11 +284,13 @@ manual.temperature = {
 
 1. Web interface reachable at `http://torrador.local` from a computer and phone on the same network
 2. Dashboard displays BT and ET in real time, with plausible values from the real probes
-3. In manual mode, START/STOP runs and stops the process (burner off on STOP and at boot; LOCKOUT cleared with BOOT)
-4. With min/max set, the burner regulates to the band on BT (off always wins)
-5. The min and max temperatures can be set, cleared, and saved
-6. The min/max settings persist after restarting the ESP
-7. With min/max unset, the flame follows START/STOP (on while running, off when stopped)
+3. In **manual** mode, START/STOP runs and stops the process; the flame follows START (burner off on STOP and at boot; LOCKOUT cleared with BOOT)
+4. In **automatic** mode with min/max set, the burner regulates to the band on BT (off always wins)
+5. The control mode, min/max band, and over-temperature cutoff can be set, cleared, and saved (web UI and serial)
+6. The mode / min/max / hard_max settings persist after restarting the ESP
+7. Switching control mode cuts the burner first (no inherited running flame)
+7a. The independent over-temperature cutoff (`hard_max_temp_c`) latches a LOCKOUT in every mode when BT reaches it, regardless of the band or an Artisan command
+7b. A stalled control loop reboots via the watchdog, and the burner-enable output comes up de-energized (fail-safe)
 8. With no saved credentials, the device comes up in AP mode (`Torrador`) and the captive portal opens the configuration page automatically when connecting from a phone
 9. After saving SSID/password in the portal, the device restarts and connects to the configured network
 10. Connection failure after timeout automatically returns to AP mode; the physical boot button and a web interface option also reset the network configuration

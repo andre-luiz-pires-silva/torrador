@@ -19,7 +19,9 @@ Single environment (`esp32`); do not introduce a build system other than Platfor
 
 ## What this project is
 
-Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) and air temperature (ET) via 2x MAX6675 (type-K thermocouple, SPI), commands a dedicated gas flame controller (**Inova INV-27109** — which drives the solenoid valve, spark, and ionization flame sensing), and serves a local web interface for operation and configuration. The ESP enables the flame controller and supervises it via its fault output. Current phase: **V0 — proof of concept** (real actuators with no gas/load connected). Integration with the Artisan software via MODBUS TCP comes in Phase 3 — do not implement yet.
+Firmware for a gas coffee roaster controller. It monitors bean temperature (BT) and air temperature (ET) via 2x MAX6675 (type-K thermocouple, SPI), commands a dedicated gas flame controller (**Inova INV-27109** — which drives the solenoid valve, spark, and ionization flame sensing), and serves a local web interface for operation and configuration. The ESP enables the flame controller and supervises it via its fault output. Current phase: **V0 — proof of concept** (real actuators with no gas/load connected).
+
+**Roadmap (reordered 2026-07):** Phase 1 (V0, bench dry) → **Phase 2 — Artisan integration** (MODBUS TCP, still dry, on the validated base) → **Phase 3 — real system / gas** (real INV + gas valve, the final step). Artisan integration was brought forward ahead of the real gas assembly because it is pure firmware/network work needing no gas; assembling real combustion last de-risks the project. Do not implement Artisan/MODBUS until Phase 2 is started.
 
 **Full requirements, features, and acceptance criteria:** `docs/PRD-torrador-esp32-v0.md`. Consult before implementing any feature.
 
@@ -63,9 +65,10 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 
 ## Critical domain rules (safety)
 
-- Temperature regulation is a simple **min/max band on BT** (below min → demand heat; above max → stop, with hysteresis). If min/max are not both configured, the burner stays on directly. No rule engine, no BT/ET selection — deliberately minimal.
-- **Turning the burner OFF always takes precedence** (max reached, flame fault, STOP, or sensor fault). This is a thermal-safety requirement, not an implementation detail.
-- Operating modes: **manual** (standalone — runs on its own settings) and, in Phase 3, **Artisan** (MODBUS TCP slave). In manual mode a single **START/STOP** control runs/stops the process; with min/max set the burner regulates to the band, otherwise the flame follows START/STOP.
+- Temperature regulation (in **automatic** mode) is a simple **min/max band on BT** (below min → demand heat; above max → stop, with hysteresis). Both limits are required for automatic mode. No rule engine, no BT/ET selection — deliberately minimal.
+- An **independent over-temperature cutoff** (`hard_max_temp_c`, in `config.safety`) applies in **every** mode and latches a LOCKOUT when BT reaches it — a safety backstop above the regulation band, also protecting against a remote Artisan command. Optional (unset = disabled).
+- **Turning the burner OFF always takes precedence** (max reached, over-temp cutoff, flame fault, STOP/e-stop, or sensor fault). This is a thermal-safety requirement, not an implementation detail.
+- **Three control modes** (`config.mode`): **manual** — flame follows START/STOP directly (band ignored); **automatic** — the ESP regulates BT to the min/max band; **Artisan** — MODBUS TCP slave, Artisan owns the demand (Phase 2), and the front button becomes a latched emergency stop. Switching mode always cuts the burner first.
 - MAX6675: minimum ~220ms interval between reads of the same chip — respect this in the read cycle.
 - Shared SPI between the two MAX6675 (same SCK/SO), individual CS.
 - Common relay modules are **active-LOW** — confirm the module's polarity before assuming HIGH=on.
@@ -91,21 +94,25 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 | MAX6675 (not MAX31855) | Simplicity in V0; no thermocouple fault detection for now; future upgrade is straightforward |
 | Plain HTTP, no HTTPS | Local network; TLS costs RAM/CPU; Chrome warnings don't affect private IPs |
 | Custom provisioning (not WiFiManager) | Reuses async stack + single visual identity |
-| Single manual/auto toggle (not per relay) | Product decision |
-| Burner-off always takes precedence (max/fault/stop) | Thermal safety |
+| Three explicit control modes: manual / automatic / Artisan (not per relay) | Product decision; each mode owns the heat demand differently; mode switch cuts the burner first |
+| Independent over-temperature cutoff (`hard_max_temp_c`) in all modes | Safety backstop above the band; also guards against a remote Artisan command |
+| Roadmap reordered: Artisan (Phase 2) before real gas assembly (Phase 3) | Artisan is firmware-only, validated dry; assembling real combustion last de-risks the project |
+| Burner-off always takes precedence (max/over-temp/fault/stop) | Thermal safety |
 | Simple min/max temperature control (no rule engine) | Minimal for V0; flexible rules dropped; re-evaluate later if needed |
-| ESP32-only (ESP8266 dropped) | Simpler build/code; dual-core + RAM for simultaneous web + MODBUS in Phase 3 |
+| ESP32-only (ESP8266 dropped) | Simpler build/code; dual-core + RAM for simultaneous web + MODBUS in Phase 2 |
 | White-label branding, compile-time | One codebase, many manufacturers; per-build identity with no runtime cost |
 | Gas burner: delegate combustion to Inova INV-27109; ESP enables + supervises (fault via PC817 opto); ESP-level lockout + mechanical backstop | Purpose-built controller does ignition/ionization/valve safely; simpler firmware; safer for a commercial product; see `docs/design-flame-control.md` |
 
 ## Open (decide during implementation, ask if relevant)
 
-- WebSocket vs. polling for dashboard updates
+- ~~WebSocket vs. polling for dashboard updates~~ → resolved: **polling** `/status` every 1 s
 - HTTP Basic Auth: include in V0 or not
 - Final pin assignment (avoid ESP32 boot/strapping pins)
+- Artisan burner-power → actuation mapping beyond on/off threshold (revisit in Phase 3)
 
-## Out of scope for V0 (do not implement)
+## Out of scope for Phase 1 / V0 (do not implement here)
 
-- MODBUS TCP / Artisan integration (Phase 3)
-- Burner time-proportioning (Phase 3; in V0 control is on/off via rules)
+- MODBUS TCP / Artisan integration (**Phase 2** — start only when that phase begins)
+- Burner time-proportioning / flame modulation (**Phase 3**, measured against the real INV; in V0/Phase 2 the burner is on/off, and Artisan's burner-power maps to on/off by threshold)
+- Real gas actuation / real INV assembly (**Phase 3**)
 - **Drum-motor automation** (on/off or variable speed), **ventilation control**, and any other more advanced automation — deliberately out of the initial scope (V0 drives only the burner). See PRD §4.1.

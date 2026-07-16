@@ -1,10 +1,15 @@
 # Design & ADR — Flame / Burner Control (gas)
 
-**Status:** Decisions closed, ready for implementation
-**Phase goal:** Safe gas-burner actuation by **delegating combustion to a dedicated
-flame controller (Inova INV-27109)**, plus a simple min/max temperature hold, all
-configured over the serial console.
-**Relates to:** `PRD-torrador-esp32-v0.md` (F4 burner control, safety rules)
+**Status:** Decisions closed. Bench control flow implemented (dry); real gas actuation is the final phase.
+**Goal:** Safe gas-burner actuation by **delegating combustion to a dedicated
+flame controller (Inova INV-27109)**, plus a simple min/max temperature hold and an
+independent over-temperature cutoff. Configuration is available over **both the serial
+console and the web UI** (the web UI landed after this doc's first draft).
+**Phase note (2026-07):** the roadmap was reordered — **Artisan integration is now
+Phase 2** (dry, on the validated base) and the **real INV + gas assembly is Phase 3**
+(the last step). This document specifies the burner/flame design that Phase 3 realizes
+with real hardware; the control logic itself already runs dry on the bench.
+**Relates to:** `PRD-torrador-esp32-v0.md` (F3 modes, F4/F4a burner control + over-temp, safety rules)
 **Controller manual:** `docs/manuals/Manual_INV_27109v9.1.pdf`
 **Last updated:** 2026-07-14
 
@@ -44,12 +49,14 @@ it is **outside the scope of this firmware/controller** (see §9 and §12).
 - **Dry run** — no real gas connected; the fault/flame input exercised with a
   push-button (or the real INV, which faults with no gas).
 
-**Out of scope (this phase)**
+**Out of scope (this design)**
 - Electric resistive heat source (reserved only).
-- Flame modulation / time-proportioning (Phase 3).
-- Web UI for configuration (serial only this phase).
+- Flame modulation / time-proportioning (deferred to Phase 3, measured against the real INV).
 - Ignition timing / purge parameters — these live **inside the INV-27109** and
   are not ours to configure.
+
+*(Note: configuration was originally serial-only; the web UI + LittleFS persistence
+now exist and are the primary configuration surface — serial remains as a fallback.)*
 
 ## 3. Hardware & reference devices
 
@@ -123,8 +130,12 @@ RUN  ──(demand falls: temp > max)───────► HOLD
 RUN/HOLD ──(process STOP)───────────────► IDLE
 HOLD ──(demand rises: temp < min)───────► RUN
 LOCKOUT ──(BOOT short press)────────────► IDLE
+any + BT ≥ hard_max_temp_c ──────────────► LOCKOUT   (over-temp cutoff; BOOT to clear)
 any + temp-sensor fault ────────────────► FAULT ──(fault clears)──► IDLE
 ```
+
+*(In **Artisan** mode the front button is a latched **ESTOP** instead of START/STOP —
+same "cut and refuse to re-enable until BOOT" semantics as LOCKOUT.)*
 
 **Optimistic ignition:** the ESP does **not** wait to confirm flame — as soon as it
 enables the INV it considers the burner firing (`RUN`). The INV owns ignition and
@@ -139,27 +150,34 @@ to LittleFS as `/config.json` (ArduinoJson). Loaded at boot; if the file is abse
 or can't be read in the current format, it is treated as no config and reset to
 defaults (no versioning/migration). A valid change over serial is saved immediately.
 
-Settings are grouped by **operating mode**, then by area. Two modes are foreseen:
-- **`manual`** — the controller runs on its own settings (today: min/max temperature).
-- **`artisan`** — the controller is a **MODBUS TCP slave** driven by Artisan (Phase 3, no settings yet).
+A top-level `mode` selects the control authority; per-mode and safety settings live
+in their own groups. **Three modes** (see `src/config.h`):
+- **`manual`** — the operator drives START/STOP directly; the flame follows START (no band).
+- **`auto`** — the ESP regulates BT to a min/max band (both limits required).
+- **`artisan`** — **MODBUS TCP slave** driven by Artisan (**Phase 2**; struct scaffolded, no fields yet).
 
 Current schema:
 ```jsonc
 {
-  "manual": {                        // standalone mode
-    "temperature": {                 // min/max band on BT; either omitted => flame direct
+  "mode": "manual",                  // "manual" | "auto" | "artisan"
+  "auto": {                          // used by "auto" mode
+    "temperature": {                 // min/max band on BT
       "min_c": 28,                   // °C  (absent = not configured)
       "max_c": 33                    // min < max
     }
-  }
+  },
+  "safety": {                        // applies in EVERY mode
+    "hard_max_temp_c": 240           // independent over-temp cutoff (absent = disabled)
+  },
+  "network": { /* mode, ssid, password, ap_password, mdns_host — PRD F6 */ }
 }
 ```
 
-Planned future settings (design intent, not implemented yet) — under `manual`:
-`burner` (`fault_debounce_ms`), `safety` (`hard_max_temp_c`, `sensor_fault_action`);
-top-level: `artisan` (MODBUS options), `network` (Wi-Fi provisioning, PRD F6).
+`safety.hard_max_temp_c` and `network` are **implemented**. Still planned (design intent,
+not implemented): `burner.fault_debounce_ms`, `safety.sensor_fault_action`, and the
+`artisan` MODBUS options (Phase 2).
 
-Validation (rejected on set): `min_c < max_c`. Either unset ⇒ flame direct.
+Validation (rejected on set): `min_c < max_c`; `auto` mode requires both limits.
 
 ## 8. Serial command interface
 
@@ -169,6 +187,10 @@ Validation (rejected on set): `min_c < max_c`. Either unset ⇒ flame direct.
 | `min <c>` | Set the minimum temperature (°C) |
 | `max <c>` | Set the maximum temperature (°C) |
 | `min -` / `max -` | Clear a value (unset ⇒ flame direct) |
+| `hardmax <c>` | Set the independent over-temperature cutoff (°C) |
+| `hardmax -` | Clear the cutoff (disabled) |
+| `mode manual\|auto\|artisan` | Select the control mode |
+| `net ap\|sta ...` | Configure networking (see serial help) |
 
 Invalid input returns an error line and leaves the config unchanged; a valid
 change is saved to `/config.json` immediately. The LOCKOUT is cleared with the
@@ -192,9 +214,11 @@ change is saved to `/config.json` immediately. The LOCKOUT is cleared with the
    treated as no flame; the INV is the physical safety authority — it closes gas on
    flame loss regardless of what the ESP reads.
 6. **Watchdog** cuts the enable (closes gas) if the loop stalls; the cooperative
-   loop must never block in `RUN`.
+   loop must never block in `RUN`. *(Implemented: the ESP32 task WDT reboots on a
+   loop stall, and `setup()` forces the enable output OFF before anything else.)*
 7. **Independent over-temperature cutoff** (`hard_max_temp_c`) drops the burner
-   regardless of the regulation band.
+   regardless of the regulation band. *(Implemented: latches LOCKOUT in every mode
+   — manual/auto/artisan — when BT reaches the ceiling.)*
 8. **Snubber** across the solenoid-valve coil (inductive load on a
    resistive-rated relay) — protects the INV's S2 contacts and keeps the
    ionization reading clean.

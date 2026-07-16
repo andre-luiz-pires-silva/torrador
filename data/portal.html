@@ -50,6 +50,17 @@
           </div>
         </div>
 
+        <div class="field">
+          <label for="hard_max">Corte de segurança por temperatura (BT)</label>
+          <div class="inpunit">
+            <input id="hard_max" name="hard_max" type="number" inputmode="decimal" step="1"
+                   placeholder="desligado">
+            <span class="unit-suffix" aria-hidden="true">°C</span>
+          </div>
+          <p class="hint">Limite máximo absoluto: vale em todos os modos e desliga o queimador
+            (trava — exige BOOT). Deixe em branco para desativar.</p>
+        </div>
+
         <button type="submit" class="btn block ember" id="save-op">Salvar</button>
         <p class="status" id="op-status"></p>
       </form>
@@ -184,6 +195,7 @@
       if (cm) cm.checked = true;
       if (op.min_c !== null && op.min_c !== undefined) $('min').value = op.min_c;
       if (op.max_c !== null && op.max_c !== undefined) $('max').value = op.max_c;
+      if (op.hard_max_c !== null && op.hard_max_c !== undefined) $('hard_max').value = op.hard_max_c;
       ctrlChanged();
 
       // network

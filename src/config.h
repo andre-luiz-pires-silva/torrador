@@ -39,6 +39,15 @@ struct AutoConfig {
   TemperatureConfig temperature;
 };
 
+// --- Safety: independent over-temperature cutoff (applies in EVERY mode) ---
+// A hard ceiling on BT, independent of the AUTO regulation band. If BT reaches
+// it in any mode (manual/auto/artisan), the burner is cut regardless of what the
+// operator or Artisan is asking — "off always wins". NaN = not configured.
+struct SafetyConfig {
+  float hardMaxC = NAN;   // NaN = disabled
+  bool configured() const { return !isnan(hardMaxC); }
+};
+
 // --- Artisan mode: MODBUS TCP slave to the Artisan software (future settings) ---
 struct ArtisanConfig {
   // e.g. MODBUS port, register options — to be defined in Phase 3.
@@ -71,6 +80,7 @@ struct Config {
   Mode          mode = Mode::MANUAL;   // active control authority (default MANUAL)
   AutoConfig    automatic;             // AUTO-mode band ("auto" is a reserved word)
   ArtisanConfig artisan;
+  SafetyConfig  safety;                // independent over-temp cutoff (all modes)
   NetworkConfig network;
 };
 

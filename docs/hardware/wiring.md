@@ -98,7 +98,7 @@ flowchart LR
 
 > **Out of initial scope.** Drum-motor automation (on/off or variable speed),
 > ventilation, and other more advanced automations are not wired or controlled in
-> this phase — V0 drives only the burner enable. See the PRD (§4.1) for the scope
+> this phase — V0 drives only the burner enable. See the PRD (§4.2) for the scope
 > note; add the drum/ventilation outputs here if a later phase brings them in.
 
 ## 4. Mains side — 110 VAC (INV-27109)
@@ -129,6 +129,10 @@ of this firmware** (installer's responsibility) — see `../design-flame-control
 
 ## 6. Bench test (no gas)
 
+> **Roadmap:** wiring the real INV + gas valve on this mains side is the **final
+> phase (Phase 3)**. Phase 1 (control logic, dry) and Phase 2 (Artisan integration,
+> still dry) run entirely on the low-voltage side with the LED/button stand-ins below.
+
 The current firmware (`src/main.cpp`) runs the burner control flow **without the
 INV or any gas**:
 
@@ -138,9 +142,10 @@ INV or any gas**:
 - **Enable output (GPIO25) → LED** (GPIO25 → 330Ω → LED → GND): lit while the
   burner is firing (`RUN`).
 - **BOOT button:** clears the `LOCKOUT`.
-- **Min/max** are set over serial (`min <c>` / `max <c>` / `show`); unset ⇒ the
-  flame stays on directly.
-- The OLED shows the brand, BT temperature, the state and the min/max.
+- **Control mode, min/max band, and the over-temperature cutoff** are set from the
+  web UI (Settings › Operation) or over serial (`mode`, `min`/`max`, `hardmax`,
+  `show`). In manual mode the flame follows START; auto regulates the band.
+- The OLED shows the brand, BT temperature, the state and (in auto) the min/max.
 - **With the real INV, still no gas:** energizing it runs its sequence and
   **faults** (no flame), exercising the real opto path and the ESP lockout.
 

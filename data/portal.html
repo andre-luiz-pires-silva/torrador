@@ -21,6 +21,7 @@
     <div class="tabs" role="tablist">
       <button class="tab" id="tab-op"  role="tab" aria-selected="true"  aria-controls="panel-op">Operação</button>
       <button class="tab" id="tab-net" role="tab" aria-selected="false" aria-controls="panel-net">Rede</button>
+      <button class="tab" id="tab-sec" role="tab" aria-selected="false" aria-controls="panel-sec">Segurança</button>
     </div>
 
     <!-- ===================== OPERAÇÃO ===================== -->
@@ -48,17 +49,6 @@
               <span class="unit-suffix" aria-hidden="true">°C</span>
             </div>
           </div>
-        </div>
-
-        <div class="field">
-          <label for="hard_max">Corte de segurança por temperatura (BT)</label>
-          <div class="inpunit">
-            <input id="hard_max" name="hard_max" type="number" inputmode="decimal" step="1"
-                   placeholder="desligado">
-            <span class="unit-suffix" aria-hidden="true">°C</span>
-          </div>
-          <p class="hint">Limite máximo absoluto: vale em todos os modos e desliga o queimador
-            (trava — exige BOOT). Deixe em branco para desativar.</p>
         </div>
 
         <button type="submit" class="btn block ember" id="save-op">Salvar</button>
@@ -116,6 +106,60 @@
         <p class="status" id="net-status"></p>
       </form>
     </section>
+
+    <!-- ===================== SEGURANÇA ===================== -->
+    <section class="section" id="panel-sec" role="tabpanel" aria-labelledby="tab-sec" hidden>
+      <form class="form" id="form-sec">
+        <div class="field">
+          <label for="hard_max">Corte de segurança por temperatura (BT)</label>
+          <div class="inpunit">
+            <input id="hard_max" name="hard_max" type="number" inputmode="decimal" step="1"
+                   placeholder="desligado">
+            <span class="unit-suffix" aria-hidden="true">°C</span>
+          </div>
+          <p class="hint">Limite máximo absoluto: vale em todos os modos e desliga o queimador
+            (trava — exige BOOT). Deixe em branco para desativar.</p>
+        </div>
+
+        <span class="eyebrow">Acesso ao site</span>
+
+        <div class="field">
+          <label for="admin_user">Usuário</label>
+          <input id="admin_user" name="admin_user" autocomplete="off" placeholder="admin">
+        </div>
+
+        <div class="field">
+          <label for="admin_password">Senha</label>
+          <div class="row-scan">
+            <div class="field">
+              <input id="admin_password" name="admin_password" type="password" autocomplete="off"
+                     placeholder="sem senha (site aberto)">
+            </div>
+            <button type="button" id="chpw-admin" class="btn ghost small" hidden>Mudar senha</button>
+          </div>
+          <p class="hint">Deixe a senha em branco para manter o site aberto — use apenas em redes
+            confiáveis. Esqueceu a senha? Ela pode ser redefinida pela porta serial
+            (comando <code>auth</code>).</p>
+        </div>
+
+        <div class="note">
+          <p class="lead">A segurança das funções oferecidas pela página web depende diretamente da
+            segurança da rede em que o torrador opera.</p>
+          <details>
+            <summary>Saiba mais</summary>
+            <p>Na prática, ela é tão protegida quanto essa rede: qualquer pessoa com acesso à rede pode
+              acionar o equipamento, assim como qualquer pessoa próxima pode usar os botões físicos.</p>
+            <p>A senha acima é uma camada extra contra o acesso casual de outros aparelhos da rede —
+              não um cofre. Para segurança rigorosa, evite conectar o torrador a uma rede aberta ou
+              compartilhada: prefira o modo “Rede do Torrador” (AP), defina uma senha forte e mantenha
+              conectados a essa rede privada apenas os dispositivos que devem operar o sistema.</p>
+          </details>
+        </div>
+
+        <button type="submit" class="btn block ember" id="save-sec">Salvar</button>
+        <p class="status" id="sec-status"></p>
+      </form>
+    </section>
   </main>
 
   <script>
@@ -125,15 +169,15 @@
     let apSsid = 'Torrador';
 
     /* ---------- Tabs ---------- */
+    const TABS = ['op', 'net', 'sec'];
     function selectTab(which) {
-      const op = which === 'op';
-      $('tab-op').setAttribute('aria-selected', op);
-      $('tab-net').setAttribute('aria-selected', !op);
-      $('panel-op').hidden = !op;
-      $('panel-net').hidden = op;
+      TABS.forEach(id => {
+        const on = id === which;
+        $('tab-' + id).setAttribute('aria-selected', on);
+        $('panel-' + id).hidden = !on;
+      });
     }
-    $('tab-op').addEventListener('click', () => selectTab('op'));
-    $('tab-net').addEventListener('click', () => selectTab('net'));
+    TABS.forEach(id => $('tab-' + id).addEventListener('click', () => selectTab(id)));
 
     /* ---------- Operation: control-mode hint ---------- */
     const CTRL_HINTS = {
@@ -182,6 +226,19 @@
     }
     $('chpw').addEventListener('click', () => { unlockPassword(); $('password').focus(); });
 
+    /* ---------- Admin (site) password: same "Mudar senha" gate ---------- */
+    function lockAdminPassword() {
+      const p = $('admin_password');
+      p.value = '••••••••'; p.disabled = true;
+      $('chpw-admin').hidden = false;
+    }
+    function unlockAdminPassword() {
+      const p = $('admin_password');
+      p.value = ''; p.disabled = false;
+      $('chpw-admin').hidden = true;
+    }
+    $('chpw-admin').addEventListener('click', () => { unlockAdminPassword(); $('admin_password').focus(); });
+
     /* ---------- Load current config ---------- */
     fetch('/config').then(r => r.json()).then(c => {
       if (!c) return;
@@ -204,6 +261,10 @@
       if (on.ssid) $('ssid').value = on.ssid;
       if (on.has_password) lockPassword(); else unlockPassword();
       setNetMode(on.mode || 'ap');
+
+      // security (over-temp cutoff + site login)
+      $('admin_user').value = on.admin_user || 'admin';
+      if (on.has_admin_password) lockAdminPassword(); else unlockAdminPassword();
     }).catch(() => setNetMode('ap'));
 
     /* ---------- Wi-Fi scan ---------- */
@@ -292,6 +353,27 @@
         location.href = '/';                       // back to home after saving
       } catch (e) {
         opStatus.className = 'status err'; opStatus.textContent = 'Falha ao salvar. Tente novamente.';
+        btn.disabled = false;
+      }
+    });
+
+    /* ---------- Save: security (applies live, no reboot) ---------- */
+    // A masked/disabled admin-password field is omitted from the form => the
+    // firmware keeps the stored password. After "Mudar senha", an empty field is
+    // submitted and disables the auth. Setting or enabling a password makes the
+    // browser prompt on the next request (the redirect to '/').
+    const secStatus = $('sec-status');
+    $('form-sec').addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const btn = $('save-sec'); btn.disabled = true;
+      secStatus.className = 'status'; secStatus.textContent = 'Salvando…';
+      try {
+        const body = new URLSearchParams(new FormData($('form-sec')));
+        const res = await (await fetch('/security', { method: 'POST', body })).json();
+        if (!res || !res.ok) throw new Error(res && res.error);
+        location.href = '/';                        // back to home after saving
+      } catch (e) {
+        secStatus.className = 'status err'; secStatus.textContent = 'Falha ao salvar. Tente novamente.';
         btn.disabled = false;
       }
     });

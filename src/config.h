@@ -72,7 +72,15 @@ struct NetworkConfig {
   char    password[65]= "";                 // STA WPA2 passphrase (max 63 + NUL)
   char    apPassword[65] = BRAND_AP_PASSWORD;// AP WPA2 passphrase (always required, >=8)
   char    mdnsHost[33]= BRAND_MDNS_HOST;    // user-overridable; defaults to brand
+  // Optional HTTP Basic credentials gating the whole web UI. The password being
+  // empty means auth is disabled: the interface is open (acceptable on a trusted
+  // network). When set, it guards the UI, /status, config and burner commands.
+  // The username is shown/editable in the UI (default BRAND_ADMIN_USER) so the
+  // operator knows what to type at the browser login prompt.
+  char    adminUser[33] = BRAND_ADMIN_USER; // web-UI login username (never empty)
+  char    adminPassword[65] = "";           // "" = auth disabled
   bool    staProvisioned() const { return ssid[0] != '\0'; }
+  bool    adminAuthEnabled() const { return adminPassword[0] != '\0'; }
 };
 
 // --- Root configuration ---

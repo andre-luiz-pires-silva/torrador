@@ -106,7 +106,7 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 ## Open (decide during implementation, ask if relevant)
 
 - ~~WebSocket vs. polling for dashboard updates~~ → resolved: **polling** `/status` every 1 s
-- HTTP Basic Auth: include in V0 or not
+- ~~HTTP Basic Auth: include in V0 or not~~ → resolved: **optional HTTP Basic** (`config.network.adminPassword`, empty = disabled) gating the **whole** UI, with a **configurable username** (`adminUser`, default `admin` from `BRAND_ADMIN_USER`). Set/cleared in the **Segurança** settings tab (which also holds `hard_max_temp_c` and an access disclaimer), or via the serial `auth` command (recovery path). See PRD F6a.
 - Final pin assignment (avoid ESP32 boot/strapping pins)
 - Artisan burner-power → actuation mapping beyond on/off threshold (revisit in Phase 3)
 

@@ -9,6 +9,8 @@
     "ssid": "MinhaRede",
     "password": "minhaSenha",
     "ap_password": "torrador",
-    "mdns_host": "torrador"
+    "mdns_host": "torrador",
+    "admin_user": "admin",
+    "admin_password": ""
   }
 }

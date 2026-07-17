@@ -123,13 +123,23 @@ POWER ON
 2. **Automatic fallback:** connection failure after timeout -> AP mode (covers router/password change)
 3. **Web interface button:** "Reset network configuration" option in operation mode
 
+#### F6a — Optional web-UI password (HTTP Basic)
+Prevents casual access to the admin interface from other devices on the network — especially in STA mode, where anyone can reach the ESP by IP or `torrador.local` (mDNS).
+- **Optional:** a single credential stored in `config.network` (empty password = disabled). The customer decides: trusted network -> leave open for speed; shared/open network -> set a password. The **username is configurable** (`adminUser`, default `admin` from `BRAND_ADMIN_USER`) and shown in the UI so the operator knows what to type at the browser prompt; the password (`adminPassword`) toggles the feature on/off.
+- **HTTP Basic Auth**, native to ESPAsyncWebServer — no session/cookie/login page. When set, it gates the **entire** interface (dashboard, `/status`, config and burner commands); only the captive-portal `onNotFound` redirect stays open.
+- Set/cleared in the **Settings › Security** tab (username field + masked "Mudar senha" password gate: keep / change / disable), applied live with no reboot. The username is returned by `/config` (not a secret); the password never is — only `has_admin_password`.
+- The Security tab also surfaces a **plain-language disclaimer**: operating the roaster over the web is as accessible as its physical buttons (anyone on the network can act, like anyone standing at the machine), with a "Saiba mais" note recommending AP mode + a strong password + a private network for security-critical installs.
+- **Recovery** (forgotten password): the serial `auth` command (`auth user=.. pass=..` to set, `auth off` to disable — requires physical USB access).
+- Conscious limits (V0): plain HTTP means the base64 credential is sniffable on the LAN — this closes the "anyone opens the IP" gap, not an on-path attacker; the traffic is already cleartext by design. Credentials stored in plaintext, like the Wi-Fi passwords. No rate-limiting/lockout, single user. Revisit if a stronger posture is needed.
+
 ### 2.2 Web interface — screen/section structure
 
 | Section | Elements |
 |---|---|
 | **Dashboard** | Real-time BT and ET reading; current control mode; current burner state (idle/heating/hold/lockout/estop/sensor-fault); process running indicator; START/STOP the process (or emergency stop in Artisan); reset a lockout |
-| **Settings › Operation** | Select the control mode (manual / automatic / Artisan); set the min/max band (°C) for automatic mode; set the independent over-temperature cutoff (°C, blank = disabled) |
+| **Settings › Operation** | Select the control mode (manual / automatic / Artisan); set the min/max band (°C) for automatic mode |
 | **Settings › Network** | AP/STA mode, Wi-Fi scan + credentials, mDNS name, AP password (see F6) |
+| **Settings › Security** | Optional web-UI password (HTTP Basic, blank = open — see F6a); independent over-temperature cutoff (°C, blank = disabled) |
 
 *(Note: user-facing labels are in Portuguese (BR) for V0 per the Language Policy; the table above describes function in English.)*
 
@@ -137,7 +147,7 @@ POWER ON
 - Access via browser on a computer or phone **on the same Wi-Fi network**
 - Friendly address: `http://torrador.local` (mDNS), plus the direct IP
 - **Plain HTTP, no HTTPS** — conscious decision: negligible risk on a local network; Chrome warnings ("Always Use Secure Connections", from Oct/2026) do not apply to local/private-network IPs
-- **HTTP Basic Auth** (optional, to be assessed at implementation): a minimal layer to prevent undue access from other devices on the network
+- **HTTP Basic Auth** (optional, implemented — see F6a): a minimal layer to prevent undue access from other devices on the network. Disabled by default; when a password is set it gates the entire interface
 
 ---
 
@@ -207,15 +217,16 @@ artisan: { ... }                       // MODBUS options (Phase 2; scaffolded, n
 | Route | Method | Function |
 |---|---|---|
 | `/` | GET | Dashboard page (served from LittleFS) |
-| `/settings` | GET | Settings page (operation + network) |
-| `/status` | GET | JSON: mode, net, ssid, BT, ET, burner state, process on/off, band, hard_max |
+| `/settings` | GET | Settings page (operation + network + security) |
+| `/status` | GET | JSON: mode, net, ssid, BT, ET, burner state, process on/off, band |
 | `/brand` | GET | JSON: product name (white-label) |
-| `/config` | GET | JSON bootstrap for the settings page (operation + network) |
+| `/config` | GET | JSON bootstrap for the settings page (operation + network + `has_admin_password`) |
 | `/command` | POST | `cmd=startstop` (START/STOP or e-stop) or `cmd=clear` (reset a latch) |
-| `/operation` | POST | Save control mode + min/max band + hard_max cutoff (applies live, persisted) |
+| `/operation` | POST | Save control mode + min/max band (applies live, persisted) |
+| `/security` | POST | Save the over-temp cutoff (hard_max) + optional UI password (applies live, persisted; see F6a) |
 | `/save` | POST | Save network config (mode/SSID/password/AP password/mDNS) and reboot |
 
-*(Network reset — F6 mechanism 3 — is done from the settings page by switching to AP mode, which reboots the device as its own access point.)*
+*(All routes above require the UI password when one is set (F6a); only the captive-portal redirect stays open. Network reset — F6 mechanism 3 — is done from the settings page by switching to AP mode, which reboots the device as its own access point.)*
 
 **Configuration mode (AP):**
 
@@ -276,7 +287,7 @@ artisan: { ... }                       // MODBUS options (Phase 2; scaffolded, n
 |---|---|---|---|
 | 1 | ~~Burner solenoid coil voltage~~ **Resolved: 110 VAC, normally-closed** (design-flame-control §12) | No | — |
 | 2 | WebSocket vs. polling on the dashboard — resolved: **polling** `/status` every 1 s | No | — |
-| 3 | HTTP Basic Auth: include in V0 or not | No | Implementation preference |
+| 3 | ~~HTTP Basic Auth: include in V0 or not~~ **Resolved: optional HTTP Basic, whole UI (F6a)** | No | — |
 
 ---
 

@@ -124,6 +124,13 @@ static void printConfig() {
     Serial.print(F("  appass=(set)"));
   }
   Serial.print(F("  mdns=")); Serial.println(config.network.mdnsHost);
+
+  Serial.print(F("[cfg] ui_auth="));
+  if (config.network.adminAuthEnabled()) {
+    Serial.print(F("on (user '")); Serial.print(config.network.adminUser); Serial.println(F("')"));
+  } else {
+    Serial.println(F("off"));
+  }
 }
 
 // `net ap|sta [ssid=..] [pass=..] [mdns=..]` — set every property of one network
@@ -173,6 +180,37 @@ static bool handleNet(const char *modeArg) {
   Serial.println(F("[net] saved — restart to apply"));
   printConfig();
   return true;
+}
+
+// `auth user=<u> pass=<p>` — set the web-UI login credentials (key=value tokens,
+// like `net`; omitted keys keep their current value). `auth off` disables the
+// login by clearing the password — this is also the serial recovery path for a
+// forgotten password. An empty user falls back to the default. Applies live.
+static bool handleAuth(char *arg) {
+  if (!arg) {
+    Serial.println(F("[auth] usage: auth user=<u> pass=<p> | auth off"));
+    return false;
+  }
+  if (strcmp(arg, "off") == 0 || strcmp(arg, "-") == 0 || strcmp(arg, "clear") == 0) {
+    config.network.adminPassword[0] = '\0';
+    configSave();
+    Serial.println(F("[auth] disabled — UI is open"));
+    printConfig();
+    return true;
+  }
+
+  bool changed = false;
+  for (char *tok = arg; tok; tok = strtok(NULL, " \t")) {
+    char *eq = strchr(tok, '=');
+    if (!eq) { Serial.print(F("[auth] ignoring '")); Serial.print(tok); Serial.println(F("'")); continue; }
+    *eq = 0;
+    const char *key = tok, *val = eq + 1;
+    if      (strcmp(key, "user") == 0) { strlcpy(config.network.adminUser, val[0] ? val : BRAND_ADMIN_USER, sizeof(config.network.adminUser)); changed = true; }
+    else if (strcmp(key, "pass") == 0) { strlcpy(config.network.adminPassword, val, sizeof(config.network.adminPassword)); changed = true; }
+    else { Serial.print(F("[auth] unknown key: ")); Serial.println(key); }
+  }
+  if (changed) { configSave(); Serial.println(F("[auth] saved")); printConfig(); }
+  return changed;
 }
 
 // Returns true if a command line was handled (so the display can refresh).
@@ -236,10 +274,12 @@ static bool handleLine(char *line) {
     return true;
   }
 
+  if (strcmp(cmd, "auth") == 0) return handleAuth(arg);
+
   if (strcmp(cmd, "net") == 0) return handleNet(arg);
 
   Serial.println(F("[cfg] commands: show | mode manual|auto|artisan | min <c> | max <c> | min - | max - | hardmax <c> | hardmax -"));
-  Serial.println(F("[cfg]           net ap [pass=..] [mdns=..] | net sta ssid=.. [pass=..] [mdns=..]"));
+  Serial.println(F("[cfg]           auth user=<u> pass=<p> | auth off | net ap [pass=..] [mdns=..] | net sta ssid=.. [pass=..] [mdns=..]"));
   return false;
 }
 

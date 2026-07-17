@@ -59,6 +59,8 @@ static void toJson(JsonDocument &doc) {
   net["password"]    = config.network.password;
   net["ap_password"] = config.network.apPassword;
   net["mdns_host"]   = config.network.mdnsHost;
+  net["admin_user"]     = config.network.adminUser;
+  net["admin_password"] = config.network.adminPassword;   // "" = UI auth disabled
 }
 
 static void fromJson(JsonDocument &doc) {
@@ -79,6 +81,8 @@ static void fromJson(JsonDocument &doc) {
   strlcpy(config.network.password,   doc["network"]["password"]    | "",                sizeof(config.network.password));
   strlcpy(config.network.apPassword, doc["network"]["ap_password"] | BRAND_AP_PASSWORD, sizeof(config.network.apPassword));
   strlcpy(config.network.mdnsHost,   doc["network"]["mdns_host"]   | BRAND_MDNS_HOST,   sizeof(config.network.mdnsHost));
+  strlcpy(config.network.adminUser,     doc["network"]["admin_user"]     | BRAND_ADMIN_USER, sizeof(config.network.adminUser));
+  strlcpy(config.network.adminPassword, doc["network"]["admin_password"] | "",              sizeof(config.network.adminPassword));
 }
 
 void configReset() {

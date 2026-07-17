@@ -197,6 +197,8 @@ input:focus { outline: none; border-color: var(--ember); box-shadow: 0 0 0 3px v
 /* --- Section --------------------------------------------------------------- */
 .section { display: flex; flex-direction: column; gap: 1.1rem; }
 .section > .eyebrow { margin-bottom: -.4rem; }
+/* An eyebrow that labels a group inside a form sits close to the first field. */
+.form > .eyebrow { margin-top: .3rem; margin-bottom: -.5rem; }
 
 /* --- Network list ---------------------------------------------------------- */
 .netlist { display: flex; flex-direction: column; gap: .3rem; max-height: 13rem; overflow-y: auto; }
@@ -210,6 +212,29 @@ input:focus { outline: none; border-color: var(--ember); box-shadow: 0 0 0 3px v
 .net.sel { border-color: var(--ember); background: #fff7ed; }
 .net .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .net .meta { flex: 0 0 auto; display: flex; align-items: center; gap: .4rem; color: var(--muted); }
+
+/* --- Note / disclaimer callout --------------------------------------------- */
+.note {
+  font-size: .82rem; line-height: 1.45; color: var(--muted);
+  background: #f7f3ee; border: 1.5px solid var(--line);
+  border-radius: 10px; padding: .8rem .9rem;
+}
+.note p { margin: 0; }
+.note .lead { color: #57534e; }
+.note details { margin-top: .6rem; }
+.note summary {
+  cursor: pointer; list-style: none; width: fit-content;
+  font-weight: 700; color: var(--ember-d);
+  display: inline-flex; align-items: center; gap: .3rem;
+}
+.note summary::-webkit-details-marker { display: none; }
+.note summary::after {
+  content: "\203A"; font-size: 1.05em; line-height: 1;
+  display: inline-block; transition: transform .15s;
+}
+.note details[open] summary::after { transform: rotate(90deg); }
+.note details p { margin-top: .5rem; }
+.note summary:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; border-radius: 3px; }
 
 /* --- Hints & status -------------------------------------------------------- */
 .hint   { margin: 0; font-size: .82rem; color: var(--muted); line-height: 1.4; }

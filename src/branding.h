@@ -21,3 +21,6 @@
 #define BRAND_MDNS_HOST   "torrador"        // -> http://torrador.local (overridable at provisioning)
 #define BRAND_AP_SSID     "Torrador"         // {Brand} network (config + permanent AP mode)
 #define BRAND_AP_PASSWORD "torrador"        // default AP WPA2 passphrase (>=8 chars); change/print per device
+
+// --- Web UI access (HTTP Basic) ---
+#define BRAND_ADMIN_USER  "admin"           // fixed username for the optional UI password (only the password is configurable)

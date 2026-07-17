@@ -186,7 +186,7 @@
           const pct = d.heap_size ? Math.round((d.free_heap / d.heap_size) * 100) : 0;
           $('diagHeap').textContent = `${pct}%`;
           const lps = d.lps >= 1000 ? Math.round(d.lps / 1000) + 'k' : d.lps;
-          $('diagLoop').textContent = `${lps} laços/s`;
+          $('diagLoop').textContent = `${lps}`;
           if (d.rssi) { $('rssiWrap').hidden = false; $('diagRssi').textContent = `${rssiPct(d.rssi)}%`; }
           else { $('rssiWrap').hidden = true; }
           $('diagUp').textContent = fmtUptime(d.uptime_s);

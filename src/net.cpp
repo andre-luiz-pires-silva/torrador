@@ -48,6 +48,19 @@ static bool requireAuth(AsyncWebServerRequest *req) {
   return false;
 }
 
+// --- Static assets ------------------------------------------------------------
+
+// Serve a LittleFS file with an explicit Cache-Control header. The manual
+// server.on routes bypass ESPAsyncWebServer's serveStatic caching, so we attach
+// the header ourselves. CSS is versioned via a ?v= query on its <link>, so it
+// can carry a far-future immutable cache; HTML uses no-cache to stay fresh.
+static void sendFileCached(AsyncWebServerRequest *req, const char *path,
+                           const char *type, const char *cache) {
+  AsyncWebServerResponse *res = req->beginResponse(LittleFS, path, type);
+  res->addHeader("Cache-Control", cache);
+  req->send(res);
+}
+
 // --- Route handlers -----------------------------------------------------------
 
 // Brand name for any page (never hardcoded — white-label rule).
@@ -352,15 +365,15 @@ static void handleCommand(AsyncWebServerRequest *req) {
 static void setupRoutes() {
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *req) {
     if (!requireAuth(req)) return;
-    req->send(LittleFS, "/index.html", "text/html");     // home dashboard
+    sendFileCached(req, "/index.html", "text/html", "no-cache");   // home dashboard
   });
   server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *req) {
     if (!requireAuth(req)) return;
-    req->send(LittleFS, "/portal.html", "text/html");    // settings (operation + network + security)
+    sendFileCached(req, "/portal.html", "text/html", "no-cache");  // settings (operation + network + security)
   });
   server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *req) {
-    if (!requireAuth(req)) return;
-    req->send(LittleFS, "/style.css", "text/css");        // shared UI system
+    if (!requireAuth(req)) return;                                 // shared UI system — versioned via ?v=
+    sendFileCached(req, "/style.css", "text/css", "public, max-age=31536000, immutable");
   });
   server.on("/brand",     HTTP_GET,  handleBrand);
   server.on("/config",    HTTP_GET,  handleConfig);

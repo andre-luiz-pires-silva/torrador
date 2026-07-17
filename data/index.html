@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Torrador</title>
-  <link rel="stylesheet" href="/style.css">
+  <!-- bump ?v= sempre que style.css mudar (invalida o cache longo do navegador) -->
+  <link rel="stylesheet" href="/style.css?v=1">
 </head>
 <body>
   <main class="wrap">
@@ -17,13 +18,23 @@
         </span>
         <span class="name" id="brand">Torrador</span>
       </div>
-      <a class="iconbtn" href="/settings" aria-label="Configurações" title="Configurações">
+      <a class="iconbtn" id="cfgLink" href="/settings" aria-label="Configurações" title="Configurações">
         <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
              stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="12" cy="12" r="3"/>
           <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
         </svg>
       </a>
+    </div>
+
+    <!-- Banner de indisponibilidade: fica fora do .readout para não esmaecer junto. -->
+    <div class="offbar" id="offlineBanner" role="status" aria-live="polite" hidden>
+      <span class="offbar-ico" id="offIco" aria-hidden="true"></span>
+      <div class="offbar-txt">
+        <b>Sem conexão com o equipamento</b>
+        <span>Tentando reconectar…</span>
+      </div>
+      <span class="offbar-dot" aria-hidden="true"></span>
     </div>
 
     <div class="readout">
@@ -130,10 +141,52 @@
       + '<path d="M8 12.6a7 7 0 0 1 8 0"/><path d="M10.7 15.6a3 3 0 0 1 2.6 0"/>'
       + '<circle cx="12" cy="18.4" r=".7" fill="currentColor" stroke="none"/>');  // sinal wi-fi
     $('icoUp').innerHTML   = SVG('<circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/>'); // relógio
+    // Wi-fi cortado (banner offline): sinal + barra diagonal.
+    $('offIco').innerHTML  = SVG('<path d="M5 9.5a11 11 0 0 1 14 0"/>'
+      + '<path d="M8 12.6a7 7 0 0 1 8 0"/><path d="M10.7 15.6a3 3 0 0 1 2.6 0"/>'
+      + '<circle cx="12" cy="18.4" r=".7" fill="currentColor" stroke="none"/>'
+      + '<path d="M3 3l18 18"/>');
+
+    // Sinaliza indisponibilidade do equipamento: esmaece as leituras (marcando-as
+    // como não-atuais), mostra o banner de reconexão e desabilita os comandos.
+    function setOffline(on) {
+      if (document.body.classList.contains('offline') === on) return; // já no estado
+      document.body.classList.toggle('offline', on);
+      $('offlineBanner').hidden = !on;
+      $('startstop').disabled = on;   // não dá para comandar um equipamento offline
+      $('clear').disabled = on;
+      // A engrenagem é um link: navegar até /settings offline não carrega, então
+      // bloqueamos clique (CSS) e foco por teclado, e sinalizamos via aria.
+      const cfg = $('cfgLink');
+      cfg.setAttribute('aria-disabled', on ? 'true' : 'false');
+      cfg.tabIndex = on ? -1 : 0;
+    }
+
+    // Guard contra requests empilhadas: com o ESP desligado o fetch fica pendurado
+    // até o timeout, então nunca deixamos uma nova poll começar antes da anterior.
+    let inFlight = false;
+    // Duas falhas seguidas (~2–3 s) antes de declarar offline — uma request perdida
+    // isolada não deve piscar a interface.
+    let misses = 0;
 
     async function poll() {
+      if (inFlight) return;
+      inFlight = true;
       try {
-        const s = await (await fetch('/status')).json();
+        // Timeout próprio: um host morto não rejeita o fetch rápido (o socket
+        // pendura por dezenas de segundos), então abortamos em 2,5 s.
+        const ac = new AbortController();
+        const t = setTimeout(() => ac.abort(), 2500);
+        let s;
+        try {
+          const r = await fetch('/status', { signal: ac.signal });
+          if (!r.ok) throw new Error('http ' + r.status);
+          s = await r.json();
+        } finally {
+          clearTimeout(t);
+        }
+        misses = 0;
+        setOffline(false);
         $('mode').textContent = MODES[s.mode] || s.mode;
         $('modeIco').innerHTML = MODE_ICON[s.mode] || '';
         // Rede: rótulo humano ("Rede própria" p/ AP, "Conectado" p/ STA) + nome (SSID).
@@ -192,7 +245,13 @@
           $('diagUp').textContent = fmtUptime(d.uptime_s);
           $('diag').hidden = false;
         }
-      } catch (e) { /* transient — keep last values */ }
+      } catch (e) {
+        // Falha de conexão: após 2 seguidas, entra em modo offline (leituras
+        // esmaecidas + banner). A poll continua rodando e recupera sozinha.
+        if (++misses >= 2) setOffline(true);
+      } finally {
+        inFlight = false;
+      }
     }
 
     async function cmd(c) {

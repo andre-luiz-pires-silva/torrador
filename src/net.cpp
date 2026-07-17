@@ -6,6 +6,7 @@
 #include "board_config.h"   // WiFi / ESPmDNS / ESPAsyncWebServer / DNSServer includes
 #include "branding.h"       // BRAND_NAME, BRAND_AP_SSID
 #include "config.h"         // config.network.*
+#include "diag.h"           // resource/health snapshot folded into /status
 
 // Configuration-mode network: fixed AP address + captive portal.
 static const IPAddress AP_IP(192, 168, 4, 1);
@@ -312,6 +313,17 @@ static void handleStatus(AsyncWebServerRequest *req) {
   float mx = config.automatic.temperature.maxC;
   if (isnan(mn)) doc["min_c"] = nullptr; else doc["min_c"] = mn;
   if (isnan(mx)) doc["max_c"] = nullptr; else doc["max_c"] = mx;
+
+  // Resource/health monitor (discreet footer on the dashboard). Cheap snapshot,
+  // already refreshed at 1 Hz by the control loop — no extra work per request.
+  const DiagMetrics &m = diagSnapshot();
+  JsonObject diag  = doc["diag"].to<JsonObject>();
+  diag["free_heap"] = m.freeHeap;
+  diag["min_heap"]  = m.minFreeHeap;
+  diag["heap_size"] = m.heapSize;
+  diag["lps"]       = m.lps;
+  diag["uptime_s"]  = m.uptimeS;
+  diag["rssi"]      = m.rssi;
 
   serializeJson(doc, *res);
   req->send(res);

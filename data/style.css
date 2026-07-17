@@ -244,6 +244,20 @@ input:focus { outline: none; border-color: var(--ember); box-shadow: 0 0 0 3px v
 
 .actions { display: flex; flex-direction: column; gap: .6rem; margin-top: 1.9rem; }
 
+/* Resource/health monitor: deliberately quiet — hairline top, faint text, small
+   line icons. The icons delimit the items, so no middot separators. */
+.diag {
+  margin-top: 1.6rem; padding-top: .7rem;
+  border-top: 1px solid var(--line);
+  display: flex; flex-wrap: wrap; gap: .25rem .9rem;
+  font-size: .72rem; color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.diag span { display: inline-flex; align-items: center; gap: .32rem; }
+.diag b { font-weight: 400; }
+.diag .di { display: inline-flex; width: 13px; height: 13px; color: var(--line-2); }
+.diag .di svg { width: 100%; height: 100%; }
+
 [hidden] { display: none !important; }
 
 @media (prefers-reduced-motion: reduce) {

@@ -67,10 +67,29 @@
       <button id="startstop" class="btn block primary">—</button>
       <button id="clear" class="btn block ghost" hidden>Destravar</button>
     </div>
+
+    <!-- Monitor de recursos: discreto, sem cor, só saúde do equipamento.
+         Cada indicador leva um ícone de traço fino + o valor. -->
+    <footer class="diag" id="diag" hidden>
+      <span title="Memória RAM livre"><i class="di" id="icoRam"></i><b id="diagHeap">—</b></span>
+      <span title="Iterações do laço por segundo (folga de CPU)"><i class="di" id="icoCpu"></i><b id="diagLoop">—</b></span>
+      <span title="Intensidade do sinal Wi-Fi" id="rssiWrap" hidden><i class="di" id="icoWifi"></i><b id="diagRssi">—</b></span>
+      <span title="Tempo ligado"><i class="di" id="icoUp"></i><b id="diagUp">—</b></span>
+    </footer>
   </main>
 
   <script>
     const $ = (id) => document.getElementById(id);
+
+    // Uptime compacto: 45s · 12min · 3h 20m · 2d 4h
+    const fmtUptime = (s) => {
+      if (s < 60) return `${s}s`;
+      const m = Math.floor(s / 60);
+      if (m < 60) return `${m}min`;
+      const h = Math.floor(m / 60);
+      if (h < 24) return `${h}h ${m % 60}m`;
+      return `${Math.floor(h / 24)}d ${h % 24}h`;
+    };
 
     const MODES = { manual: 'Manual', auto: 'Automático', artisan: 'Artisan' };
 
@@ -99,6 +118,18 @@
     fetch('/brand').then(r => r.json()).then(b => {
       if (b && b.name) { document.title = b.name; $('brand').textContent = b.name; }
     }).catch(() => {});
+
+    // Wi-Fi RSSI (dBm) -> porcentagem. -100 dBm ≈ 0%, -50 dBm ≈ 100%.
+    const rssiPct = (dbm) => Math.max(0, Math.min(100, Math.round(2 * (dbm + 100))));
+
+    // Ícones do monitor (mesmo traço fino da UI), injetados uma vez.
+    $('icoRam').innerHTML  = SVG('<rect x="6" y="8" width="12" height="8" rx="1"/>'
+      + '<path d="M9 8V6M12 8V6M15 8V6M9 18v-2M12 18v-2M15 18v-2"/>');            // chip de memória
+    $('icoCpu').innerHTML  = SVG('<path d="M3 12h4l2 5 4-11 2 6h6"/>');            // pulso (atividade)
+    $('icoWifi').innerHTML = SVG('<path d="M5 9.5a11 11 0 0 1 14 0"/>'
+      + '<path d="M8 12.6a7 7 0 0 1 8 0"/><path d="M10.7 15.6a3 3 0 0 1 2.6 0"/>'
+      + '<circle cx="12" cy="18.4" r=".7" fill="currentColor" stroke="none"/>');  // sinal wi-fi
+    $('icoUp').innerHTML   = SVG('<circle cx="12" cy="12" r="8"/><path d="M12 8v4l2.5 2"/>'); // relógio
 
     async function poll() {
       try {
@@ -148,6 +179,19 @@
           ss.className = 'btn block ' + (s.process_on ? 'danger' : 'primary');
         }
         $('clear').hidden = !(s.state === 'LOCKOUT' || s.state === 'ESTOP');
+
+        // Monitor de recursos (rodapé). Só leituras baratas vindas do firmware.
+        const d = s.diag;
+        if (d) {
+          const pct = d.heap_size ? Math.round((d.free_heap / d.heap_size) * 100) : 0;
+          $('diagHeap').textContent = `${pct}%`;
+          const lps = d.lps >= 1000 ? Math.round(d.lps / 1000) + 'k' : d.lps;
+          $('diagLoop').textContent = `${lps} laços/s`;
+          if (d.rssi) { $('rssiWrap').hidden = false; $('diagRssi').textContent = `${rssiPct(d.rssi)}%`; }
+          else { $('rssiWrap').hidden = true; }
+          $('diagUp').textContent = fmtUptime(d.uptime_s);
+          $('diag').hidden = false;
+        }
       } catch (e) { /* transient — keep last values */ }
     }
 

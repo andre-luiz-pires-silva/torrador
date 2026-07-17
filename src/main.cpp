@@ -5,6 +5,7 @@
 #include "branding.h"
 #include "config.h"
 #include "net.h"
+#include "diag.h"
 
 // -----------------------------------------------------------------------------
 // Burner control — bench version (dry, no gas, no INV yet).
@@ -221,6 +222,9 @@ static bool handleLine(char *line) {
 
   if (strcmp(cmd, "show") == 0) { printConfig(); return true; }
 
+  // Resource/health snapshot. Doesn't change displayed state -> no screen refresh.
+  if (strcmp(cmd, "stat") == 0) { diagPrint(); return false; }
+
   if (strcmp(cmd, "mode") == 0) {
     if (!arg) { Serial.println(F("[cfg] usage: mode manual|auto|artisan")); return false; }
     Mode m;
@@ -278,7 +282,7 @@ static bool handleLine(char *line) {
 
   if (strcmp(cmd, "net") == 0) return handleNet(arg);
 
-  Serial.println(F("[cfg] commands: show | mode manual|auto|artisan | min <c> | max <c> | min - | max - | hardmax <c> | hardmax -"));
+  Serial.println(F("[cfg] commands: show | stat | mode manual|auto|artisan | min <c> | max <c> | min - | max - | hardmax <c> | hardmax -"));
   Serial.println(F("[cfg]           auth user=<u> pass=<p> | auth off | net ap [pass=..] [mdns=..] | net sta ssid=.. [pass=..] [mdns=..]"));
   return false;
 }
@@ -426,9 +430,10 @@ void setup() {
 
   Serial.println();
   Serial.println(F("[torrador] boot ok — burner control (bench)"));
-  Serial.println(F("[torrador] serial: show | mode manual|auto|artisan | min <c> | max <c> | min - | max - | hardmax <c> | hardmax -"));
+  Serial.println(F("[torrador] serial: show | stat | mode manual|auto|artisan | min <c> | max <c> | min - | max - | hardmax <c> | hardmax -"));
   Serial.println(F("[torrador]         net ap [pass=..] [mdns=..] | net sta ssid=.. [pass=..] [mdns=..]"));
   printConfig();
+  diagBegin();   // log reset reason + boot-time heap (resource baseline)
 
   delay(300);
   lastBtC = max6675ReadCelsius(PIN_MAX6675_CS_BT);
@@ -444,6 +449,10 @@ void loop() {
   // Feed the task watchdog: reaching here proves the loop is alive. A stall past
   // the WDT timeout reboots (→ enable forced LOW in setup()). See setup().
   esp_task_wdt_reset();
+
+  // Resource/health monitor: counts this loop and samples metrics once per second.
+  // Placed on the hot path on purpose — the loop rate (lps) is the CPU-load proxy.
+  diagLoop(now);
 
   // ---- Network ----
   // Captive-portal DNS pump + deferred post-save reboot. Non-blocking.

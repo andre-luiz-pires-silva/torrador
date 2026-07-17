@@ -5,6 +5,7 @@
 #include "branding.h"
 #include "config.h"
 #include "net.h"
+#include "modbus.h"
 #include "diag.h"
 
 // -----------------------------------------------------------------------------
@@ -59,6 +60,12 @@ static const uint32_t SENSOR_INTERVAL_MS = 1000;
 static uint32_t lastReadMs = 0;
 static float lastBtC = NAN;   // bean temperature (BT) — drives the min/max control
 static float lastEtC = NAN;   // air/exhaust temperature (ET) — telemetry only
+
+// Artisan-mode telemetry, refreshed each loop (used by the OLED + web status).
+// The link is activity-based: true while Artisan polled within this window.
+static const uint32_t ARTISAN_LINK_TIMEOUT_MS = 6000;
+static bool    artisanLinked = false;
+static uint8_t artisanPower  = 0;   // last burner power Artisan commanded (0..100)
 
 static const char *stateName(State s) {
   switch (s) {
@@ -364,6 +371,17 @@ static void renderScreen() {
     snprintf(mm, sizeof(mm), "%s / %s", sMin, sMax);
     display.setFont(u8g2_font_6x12_tf);
     display.drawUTF8(vx, 44, mm);
+  } else if (config.mode == Mode::ARTISAN) {
+    // Same slot as the band: link status + commanded power. Accent-free to match
+    // the display fonts ("conexao", not "conexão").
+    display.setFont(u8g2_font_4x6_tf);
+    display.drawUTF8(4, 44, "Artisan");
+    int16_t vx = 4 + display.getUTF8Width("Artisan") + 4;
+    char line[24];
+    if (artisanLinked) snprintf(line, sizeof(line), "conectado  %u%%", artisanPower);
+    else               snprintf(line, sizeof(line), "sem conexao");
+    display.setFont(u8g2_font_6x12_tf);
+    display.drawUTF8(vx, 44, line);
   }
 
   // Status label is pinned to the bottom bar in every mode, so it never shifts
@@ -419,6 +437,12 @@ void setup() {
   // fallback. Started after the INV_ENABLE fail-safe above (safety-first order).
   // The splash above stays visible while a STA connect blocks (up to ~60 s).
   netBegin();
+
+  // MODBUS TCP slave for Artisan (Phase 2). Registered after netBegin() so the
+  // network stack is up; it rides the same AsyncTCP task and needs no loop pump.
+  // The port only listens in Artisan mode (opened/closed on mode changes below).
+  modbusBegin();
+  modbusSetActive(config.mode == Mode::ARTISAN);
 
   // Watchdog: subscribe this (control) loop to the ESP32 task WDT. The Arduino
   // core inits the TWDT at boot with panic=reboot and a 5 s timeout (sdkconfig
@@ -484,10 +508,18 @@ void loop() {
   // ---- Demand source, by mode ----
   //   MANUAL  : flame follows START directly (min/max band ignored)
   //   AUTO    : min/max hysteresis on BT (flame-direct if the band is unset)
-  //   ARTISAN : owned by Artisan over MODBUS (Phase 3) — no source yet
+  //   ARTISAN : Artisan writes burner power (0..100) over MODBUS; on/off by threshold
+  // Artisan telemetry (published for the OLED + web even outside Artisan mode, so
+  // the link status is always current). Power is clamped to the 0..100 contract.
+  artisanLinked = modbusLinked(ARTISAN_LINK_TIMEOUT_MS);
+  uint16_t artPow = modbusBurnerPower();
+  artisanPower = (artPow > 100) ? 100 : (uint8_t)artPow;
+
   bool band = (config.mode == Mode::AUTO) && config.automatic.temperature.configured();
   if (config.mode == Mode::ARTISAN) {
-    demand = false;                                            // Phase 3: Artisan will drive this
+    // Phase 2: on/off by threshold (proportional modulation deferred to Phase 3).
+    // Safety pre-empts below still cut the burner above whatever Artisan commands.
+    demand = (artisanPower > config.artisan.powerThreshold);
   } else if (!band) {
     demand = true;                                            // MANUAL, or AUTO without a band
   } else if (!sensorFault) {
@@ -506,6 +538,8 @@ void loop() {
     lastMode = config.mode;
     processOn = false;
     if (state != State::LOCKOUT && state != State::ESTOP) state = State::IDLE;
+    // Open the MODBUS port only in Artisan mode; leaving it drops Artisan's link.
+    modbusSetActive(config.mode == Mode::ARTISAN);
     Serial.println(F("[torrador] mode changed — burner off"));
   }
   // BOOT clears a latched safety stop (INV-fault lockout or Artisan e-stop).
@@ -582,7 +616,12 @@ void loop() {
   st.btC       = lastBtC;
   st.etC       = lastEtC;
   st.processOn = processOn;
+  st.artisanLinked = artisanLinked;
+  st.artisanPower  = artisanPower;
   netPublishStatus(st);
+
+  // Publish BT/ET to the MODBUS input registers (°C×10) for Artisan telemetry.
+  modbusPublishTemps(lastBtC, lastEtC);
 
   if (dirty) renderScreen();
 }

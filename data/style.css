@@ -126,6 +126,10 @@ h1 { font-size: 1.15rem; font-weight: 700; margin: 0; letter-spacing: -.01em; }
 .range.ok   .range-marker { border-color: var(--ok); }
 .range.ok   .range-now    { background: #e7f2ea; color: var(--ok-d); }
 .range.heat .range-now    { background: #fdf0e0; color: var(--ember-d); }
+/* Artisan power meter reuses .range: a neutral fill when no heat is demanded
+   (power at/below the on threshold) or the Artisan link is down. */
+.range.off  .range-fill   { background: var(--line-2); }
+.range.off  .range-marker { border-color: var(--line-2); }
 
 /* --- Buttons --------------------------------------------------------------- */
 .btn {
@@ -234,6 +238,33 @@ input:focus { outline: none; border-color: var(--ember); box-shadow: 0 0 0 3px v
 }
 .note details[open] summary::after { transform: rotate(90deg); }
 .note details p { margin-top: .5rem; }
+.note details ul { margin: .4rem 0 0; padding-left: 1.15rem; }
+.note details li { margin: .15rem 0; }
+/* Menu-path sub-headers inside the help (e.g. "Config ▸ Port") — stand out so the
+   steps read as one section per Artisan menu. */
+.note details .path {
+  margin-top: 1rem; font-weight: 700; color: var(--ember-d);
+}
+/* Copyable command field (Artisan slider) — a delimited read-only box so the
+   exact command is selected/copied without grabbing any surrounding text. */
+.note .cmd-field { display: flex; gap: .4rem; margin: .5rem 0 .2rem; }
+.note .cmd-field input {
+  flex: 1; min-width: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .82rem; color: var(--ink);
+  background: var(--surface); border: 1.5px solid var(--line-2);
+  border-radius: 8px; padding: .42rem .55rem;
+}
+.note .cmd-copy {
+  flex: 0 0 auto; cursor: pointer;
+  font-size: .78rem; font-weight: 600; color: var(--ember-d);
+  background: transparent; border: 1.5px solid var(--line-2);
+  border-radius: 8px; padding: 0 .7rem;
+}
+.note .cmd-copy:active { background: #00000006; }
+.note .cmd-field input:focus, .note .cmd-copy:focus-visible {
+  outline: 2px solid var(--ember); outline-offset: 1px;
+}
 .note summary:focus-visible { outline: 2px solid var(--ember); outline-offset: 2px; border-radius: 3px; }
 
 /* --- Hints & status -------------------------------------------------------- */

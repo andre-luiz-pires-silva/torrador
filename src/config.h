@@ -19,7 +19,7 @@
 // --- Active control authority (who owns the heat demand) ---
 //   MANUAL  — the operator drives START/STOP directly (default)
 //   AUTO    — the ESP's own min/max regulator owns the demand
-//   ARTISAN — the Artisan software owns the demand via MODBUS (Phase 3)
+//   ARTISAN — the Artisan software owns the demand via MODBUS (Phase 2)
 // In AUTO and ARTISAN the front push button acts as an emergency stop.
 enum class Mode : uint8_t { MANUAL, AUTO, ARTISAN };
 
@@ -48,9 +48,14 @@ struct SafetyConfig {
   bool configured() const { return !isnan(hardMaxC); }
 };
 
-// --- Artisan mode: MODBUS TCP slave to the Artisan software (future settings) ---
+// --- Artisan mode: MODBUS TCP slave to the Artisan software (Phase 2) ---
+// Artisan is the MODBUS client/master: it reads BT/ET and writes a burner-power
+// register (0..100). The ESP maps that power to an on/off burner demand by a
+// threshold (power > threshold => demand heat) — proportional modulation is
+// deferred to Phase 3 (PRD §4.1). Temperatures are exchanged as °C×10.
 struct ArtisanConfig {
-  // e.g. MODBUS port, register options — to be defined in Phase 3.
+  uint16_t port           = 502;   // MODBUS TCP listen port (502 = IANA default)
+  uint8_t  powerThreshold = 50;    // burner ON when Artisan power (0..100) exceeds this
 };
 
 // --- Network / Wi-Fi (PRD F6) ---

@@ -91,6 +91,11 @@ static void handleConfig(AsyncWebServerRequest *req) {
   float hm = config.safety.hardMaxC;
   if (isnan(hm)) op["hard_max_c"] = nullptr; else op["hard_max_c"] = hm;
 
+  // Artisan / MODBUS TCP options.
+  JsonObject ar = doc["artisan"].to<JsonObject>();
+  ar["port"]            = config.artisan.port;
+  ar["power_threshold"] = config.artisan.powerThreshold;
+
   JsonObject nw = doc["network"].to<JsonObject>();
   nw["mode"]         = netModeName(config.network.mode);
   nw["ssid"]         = config.network.ssid;
@@ -143,9 +148,33 @@ static void handleOperation(AsyncWebServerRequest *req) {
   // AUTO regulates on the band, so both limits are required.
   if (desired == Mode::AUTO && (isnan(nmin) || isnan(nmax))) { reject("band"); return; }
 
+  // Artisan-mode settings live under Operação (like the band under AUTO). Both are
+  // optional: an absent or blank field keeps the current value. Port rebinds only
+  // on restart (server started in setup()); the threshold applies live.
+  uint16_t nport = config.artisan.port;
+  uint8_t  nthr  = config.artisan.powerThreshold;
+  if (req->hasParam("port", true)) {
+    String v = req->getParam("port", true)->value(); v.trim();
+    if (v.length()) {
+      char *end; long p = strtol(v.c_str(), &end, 10);
+      if (end == v.c_str() || p < 1 || p > 65535) { reject("port"); return; }
+      nport = (uint16_t)p;
+    }
+  }
+  if (req->hasParam("power_threshold", true)) {
+    String v = req->getParam("power_threshold", true)->value(); v.trim();
+    if (v.length()) {
+      char *end; long t = strtol(v.c_str(), &end, 10);
+      if (end == v.c_str() || t < 0 || t > 100) { reject("threshold"); return; }
+      nthr = (uint8_t)t;
+    }
+  }
+
   config.mode = desired;
   config.automatic.temperature.minC = nmin;
   config.automatic.temperature.maxC = nmax;
+  config.artisan.port           = nport;
+  config.artisan.powerThreshold = nthr;
   bool ok = configSave();
   Serial.print(F("[net] operation saved: mode=")); Serial.println(modeName(config.mode));
 
@@ -322,6 +351,12 @@ static void handleStatus(AsyncWebServerRequest *req) {
   if (isnan(pubStatus.btC)) doc["bt_c"] = nullptr; else doc["bt_c"] = pubStatus.btC;
   if (isnan(pubStatus.etC)) doc["et_c"] = nullptr; else doc["et_c"] = pubStatus.etC;
 
+  // Artisan-mode telemetry (the dashboard shows it only in Artisan mode). Threshold
+  // included so the meter can mark the on/off point.
+  doc["artisan_linked"]    = pubStatus.artisanLinked;
+  doc["artisan_power"]     = pubStatus.artisanPower;
+  doc["artisan_threshold"] = config.artisan.powerThreshold;
+
   float mn = config.automatic.temperature.minC;
   float mx = config.automatic.temperature.maxC;
   if (isnan(mn)) doc["min_c"] = nullptr; else doc["min_c"] = mn;
@@ -369,7 +404,7 @@ static void setupRoutes() {
   });
   server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *req) {
     if (!requireAuth(req)) return;
-    sendFileCached(req, "/portal.html", "text/html", "no-cache");  // settings (operation + network + security)
+    sendFileCached(req, "/portal.html", "text/html", "no-cache");  // settings (operation + network + artisan + security)
   });
   server.on("/style.css", HTTP_GET, [](AsyncWebServerRequest *req) {
     if (!requireAuth(req)) return;                                 // shared UI system — versioned via ?v=

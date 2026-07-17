@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Configurações</title>
   <!-- bump ?v= sempre que style.css mudar (invalida o cache longo do navegador) -->
-  <link rel="stylesheet" href="/style.css?v=1">
+  <link rel="stylesheet" href="/style.css?v=5">
 </head>
 <body>
   <main class="wrap">
@@ -49,6 +49,95 @@
               <input id="max" name="max" type="number" inputmode="decimal" step="1" placeholder="Máx">
               <span class="unit-suffix" aria-hidden="true">°C</span>
             </div>
+          </div>
+        </div>
+
+        <!-- Artisan-mode settings — shown only when the Artisan control mode is selected
+             (same pattern as the band under Automático). -->
+        <div class="form" id="op-artisan" hidden>
+          <div class="field">
+            <label for="art_port">Porta MODBUS TCP</label>
+            <input id="art_port" name="port" type="number" inputmode="numeric" step="1"
+                   min="1" max="65535" placeholder="502">
+            <p class="hint">Porta em que o Torrador aguarda a conexão do Artisan. O padrão do MODBUS
+              é 502 — só altere se essa porta já estiver em uso na sua rede. A troca de porta passa a
+              valer depois de reiniciar o equipamento.</p>
+          </div>
+
+          <div class="field">
+            <label for="art_threshold">Limiar de acionamento do queimador</label>
+            <div class="inpunit">
+              <input id="art_threshold" name="power_threshold" type="number" inputmode="numeric"
+                     step="1" min="0" max="100" placeholder="50">
+              <span class="unit-suffix" aria-hidden="true">%</span>
+            </div>
+            <p class="hint">O Artisan comanda a potência de 0 a 100. Nesta fase o queimador é
+              liga/desliga: ele acende quando a potência pedida ultrapassa este valor
+              (ex.: 50 acende acima de 50%).</p>
+          </div>
+
+          <div class="note">
+            <details>
+              <summary>Precisa de ajuda para conectar no Artisan?</summary>
+
+              <p>A configuração é feita em três menus do Artisan, na ordem abaixo.</p>
+
+              <p class="path">Config ▸ Device</p>
+              <p>Na aba <b>ET/BT</b>, selecione <b>MODBUS</b> como aparelho — é isso que faz o
+                Artisan usar as leituras do Torrador.</p>
+              <p class="hint">Dependendo da sua versão do Artisan, o próprio menu <b>Config ▸ Device</b>
+                só aparece com o modo Expert ligado em <b>Config ▸ Mode ▸ Expert</b>.</p>
+              <p>Mantenha todas as outras configurações com o valor padrão e pressione <b>OK</b>.</p>
+
+              <p class="path">Config ▸ Port, aba MODBUS</p>
+              <p>Esta tela reúne os sensores de temperatura (em cima) e a conexão (embaixo).</p>
+              <p class="hint">Dependendo da versão, esta janela abre sozinha ao confirmar o MODBUS
+                no passo anterior.</p>
+              <p><b>Sensores</b> — na tabela <b>Inputs</b> (em cima), o Artisan lê o Input 1 como
+                BT e o Input 2 como ET:</p>
+              <ul>
+                <li><b>Input 1 → BT (grão):</b> Device <b>1</b>, Register <b>0</b>,
+                  Function <b>4</b>, Divider <b>10</b>, Mode <b>C</b>, Decode <b>uInt16</b>.</li>
+                <li><b>Input 2 → ET (ar):</b> Device <b>1</b>, Register <b>1</b>,
+                  Function <b>4</b>, Divider <b>10</b>, Mode <b>C</b>, Decode <b>uInt16</b>.</li>
+              </ul>
+              <p class="hint">O <b>Divider 10</b> converte o valor enviado (temperatura ×10) para
+                graus. Para conferir, aqueça a ponteira do <b>BT</b> (grão) e veja se é o número BT
+                que sobe no Artisan; se subir o ET, inverta o <b>Register</b> (0 e 1) entre os dois
+                inputs.</p>
+              <p><b>Conexão</b> (parte de baixo):</p>
+              <ul>
+                <li>No campo <b>Type</b> (canto inferior direito), escolha <b>TCP</b>.</li>
+                <li><b>Host:</b> o mesmo endereço que você usa para abrir esta página
+                  (ou <code id="art-mdns">torrador.local</code>).</li>
+                <li><b>Port:</b> a porta definida acima (padrão <b>502</b>).</li>
+              </ul>
+              <p>Mantenha todas as outras configurações com o valor padrão e pressione <b>OK</b>.</p>
+
+              <p class="path">Config ▸ Events, aba Sliders</p>
+              <p>Aqui você configura o comando de potência do queimador, na linha <b>Burner</b>:</p>
+              <ul>
+                <li>Marque a caixa no início da linha (coluna <b>Event</b>) para ativar o controle.</li>
+                <li><b>Action:</b> <b>Modbus Command</b>.</li>
+                <li><b>Min</b> 0, <b>Max</b> 100, <b>Factor</b> 1.0, <b>Offset</b> 0.00 — enviam a
+                  potência de 0 a 100 sem alterar.</li>
+              </ul>
+              <p><b>Command</b> — copie exatamente este comando (grava a posição do controle no
+                Holding Register <b>0</b> do dispositivo <b>1</b>; o <code>{}</code> é substituído
+                pelo valor do slider):</p>
+              <div class="cmd-field">
+                <input id="artCmd" type="text" readonly value="write([1,0,{}])" spellcheck="false"
+                       aria-label="Comando MODBUS do slider Burner">
+                <button type="button" class="cmd-copy" id="artCmdCopy">Copiar</button>
+              </div>
+              <p class="hint">O queimador acende quando a potência passa do limiar configurado acima.</p>
+              <p>Mantenha todas as outras configurações com o valor padrão e pressione <b>OK</b>.</p>
+
+              <p><b>Importante:</b> o Artisan só se conecta com o Torrador salvo no modo de controle
+                <b>Artisan</b> — é quando a porta MODBUS abre e o equipamento passa a obedecer aos
+                comandos. Em <b>Manual</b> ou <b>Automático</b> a porta fica fechada e a conexão é
+                recusada.</p>
+            </details>
           </div>
         </div>
 
@@ -184,15 +273,16 @@
     const CTRL_HINTS = {
       manual:  'O operador liga e desliga o queimador com Iniciar/Parar.',
       auto:    'O queimador regula sozinho pela banda de temperatura do grão (BT) abaixo.',
-      artisan: 'Controlado pelo software Artisan via MODBUS (fase 3).',
+      artisan: 'O software Artisan comanda o queimador via MODBUS; o Torrador envia as temperaturas. Ajuste a conexão abaixo.',
     };
     function ctrlChanged() {
       const sel = document.querySelector('#ctrlmode input:checked');
       const v = sel ? sel.value : 'manual';
       $('ctrl-hint').textContent = CTRL_HINTS[v] || '';
-      // Mode-specific fields: the band belongs to Automático. Other modes get
-      // their own sections here as they are developed.
+      // Mode-specific fields: the band belongs to Automático, the MODBUS settings
+      // to Artisan. Each mode reveals its own section here.
       $('op-auto').hidden = (v !== 'auto');
+      $('op-artisan').hidden = (v !== 'artisan');
     }
     document.querySelectorAll('#ctrlmode input').forEach(r =>
       r.addEventListener('change', ctrlChanged));
@@ -240,6 +330,27 @@
     }
     $('chpw-admin').addEventListener('click', () => { unlockAdminPassword(); $('admin_password').focus(); });
 
+    /* ---------- Artisan MODBUS command: read-only field + copy ---------- */
+    // Plain HTTP on a local IP blocks the async Clipboard API, so copy via the
+    // legacy execCommand (works over http); either way the field is left selected
+    // for a manual Ctrl+C. Read-only + no name => never submitted with the form.
+    (function () {
+      const inp = $('artCmd'), btn = $('artCmdCopy');
+      if (!inp || !btn) return;
+      const selectAll = () => inp.select();
+      inp.addEventListener('focus', selectAll);
+      inp.addEventListener('click', selectAll);
+      btn.addEventListener('click', () => {
+        inp.focus(); inp.select();
+        let ok = false;
+        try { ok = document.execCommand('copy'); } catch (e) { ok = false; }
+        if (!ok && navigator.clipboard) navigator.clipboard.writeText(inp.value).catch(() => {});
+        const prev = btn.textContent;
+        btn.textContent = 'Copiado!';
+        setTimeout(() => { btn.textContent = prev; }, 1500);
+      });
+    })();
+
     /* ---------- Load current config ---------- */
     fetch('/config').then(r => r.json()).then(c => {
       if (!c) return;
@@ -262,6 +373,13 @@
       if (on.ssid) $('ssid').value = on.ssid;
       if (on.has_password) lockPassword(); else unlockPassword();
       setNetMode(on.mode || 'ap');
+
+      // artisan (MODBUS TCP)
+      const art = c.artisan || {};
+      if (art.port !== null && art.port !== undefined) $('art_port').value = art.port;
+      if (art.power_threshold !== null && art.power_threshold !== undefined)
+        $('art_threshold').value = art.power_threshold;
+      $('art-mdns').textContent = (on.mdns || 'torrador') + '.local';
 
       // security (over-temp cutoff + site login)
       $('admin_user').value = on.admin_user || 'admin';
@@ -344,6 +462,19 @@
         opStatus.className = 'status err';
         opStatus.textContent = 'A mínima precisa ser menor que a máxima.';
         return;
+      }
+      if (mode === 'artisan') {
+        const port = $('art_port').value.trim(), thr = $('art_threshold').value.trim();
+        if (port !== '' && (parseInt(port, 10) < 1 || parseInt(port, 10) > 65535)) {
+          opStatus.className = 'status err';
+          opStatus.textContent = 'A porta MODBUS precisa estar entre 1 e 65535.';
+          return;
+        }
+        if (thr !== '' && (parseInt(thr, 10) < 0 || parseInt(thr, 10) > 100)) {
+          opStatus.className = 'status err';
+          opStatus.textContent = 'O limiar de acionamento precisa estar entre 0 e 100.';
+          return;
+        }
       }
       const btn = $('save-op'); btn.disabled = true;
       opStatus.className = 'status'; opStatus.textContent = 'Salvando…';

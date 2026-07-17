@@ -46,7 +46,10 @@ static void toJson(JsonDocument &doc) {
   if (!isnan(config.automatic.temperature.minC)) t["min_c"] = config.automatic.temperature.minC;
   if (!isnan(config.automatic.temperature.maxC)) t["max_c"] = config.automatic.temperature.maxC;
   // (unset values are omitted; they read back as NAN)
-  // artisan mode: no fields yet
+  // artisan mode: MODBUS TCP options (Phase 2)
+  JsonObject art = doc["artisan"].to<JsonObject>();
+  art["port"]            = config.artisan.port;
+  art["power_threshold"] = config.artisan.powerThreshold;
   // safety: independent over-temp cutoff (applies in every mode)
   if (!isnan(config.safety.hardMaxC)) {
     JsonObject safety = doc["safety"].to<JsonObject>();
@@ -71,6 +74,9 @@ static void fromJson(JsonDocument &doc) {
   JsonVariant maxC = doc["auto"]["temperature"]["max_c"];
   config.automatic.temperature.minC = minC.isNull() ? NAN : minC.as<float>();
   config.automatic.temperature.maxC = maxC.isNull() ? NAN : maxC.as<float>();
+
+  config.artisan.port           = doc["artisan"]["port"]            | 502;
+  config.artisan.powerThreshold = doc["artisan"]["power_threshold"] | 50;
 
   JsonVariant hardMax = doc["safety"]["hard_max_temp_c"];
   config.safety.hardMaxC = hardMax.isNull() ? NAN : hardMax.as<float>();

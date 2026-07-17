@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Torrador</title>
   <!-- bump ?v= sempre que style.css mudar (invalida o cache longo do navegador) -->
-  <link rel="stylesheet" href="/style.css?v=1">
+  <link rel="stylesheet" href="/style.css?v=5">
 </head>
 <body>
   <main class="wrap">
@@ -64,6 +64,22 @@
           <div class="range-ends">
             <span>mín <b id="bandMin">—</b></span>
             <span>máx <b id="bandMax">—</b></span>
+          </div>
+        </div>
+        <!-- Comando do Artisan: só no modo Artisan; ocupa o mesmo lugar da faixa.
+             Mostra o vínculo com o Artisan e a potência que ele está pedindo. -->
+        <div class="range" id="artisan" hidden>
+          <div class="range-head">
+            <span class="range-lbl">Comando do Artisan</span>
+            <span class="range-now" id="artPow">—</span>
+          </div>
+          <div class="range-track">
+            <div class="range-fill" id="artFill"></div>
+            <div class="range-marker" id="artThr"></div>
+          </div>
+          <div class="range-ends">
+            <span id="artLink">—</span>
+            <span>aciona acima de <b id="artThrLbl">—</b></span>
           </div>
         </div>
       </div>
@@ -223,15 +239,47 @@
           band.hidden = true;
         }
 
-        const ss = $('startstop');
+        // Comando do Artisan — só no modo Artisan: vínculo (atividade recente do
+        // Artisan) + potência pedida, com o limiar de acionamento marcado no medidor.
+        const artisan = $('artisan');
         if (s.mode === 'artisan') {
-          ss.textContent = 'Parada de emergência';
-          ss.className = 'btn block danger';
+          artisan.hidden = false;
+          const linked = !!s.artisan_linked;
+          const thr = s.artisan_threshold || 0;
+          const pow = linked ? (s.artisan_power || 0) : null;   // sem vínculo, potência é irrelevante
+          $('artLink').textContent = linked ? '● conectado' : '● sem conexão';
+          $('artLink').style.color = linked ? '#166534' : '#b91c1c';
+          $('artPow').textContent = pow == null ? '—' : pow + '%';
+          $('artThrLbl').textContent = thr + '%';
+          $('artFill').style.width = (pow == null ? 0 : pow) + '%';
+          $('artThr').style.left = thr + '%';
+          const heating = pow != null && pow > thr;
+          artisan.className = 'range ' + (heating ? 'heat' : 'off');
+        } else {
+          artisan.hidden = true;
+        }
+
+        const ss = $('startstop');
+        const latched = (s.state === 'LOCKOUT' || s.state === 'ESTOP');
+        if (s.mode === 'artisan') {
+          // O botão é a parada de emergência; uma vez travado, ele próprio vira a
+          // ação de destravar (sem botão extra) — como Iniciar/Parar no manual.
+          if (latched) {
+            ss.textContent = 'Destravar';
+            ss.className = 'btn block ghost';
+            ss.dataset.cmd = 'clear';
+          } else {
+            ss.textContent = 'Parada de emergência';
+            ss.className = 'btn block danger';
+            ss.dataset.cmd = 'startstop';
+          }
+          $('clear').hidden = true;   // no Artisan, o mesmo botão faz as duas ações
         } else {
           ss.textContent = s.process_on ? 'Parar' : 'Iniciar';
           ss.className = 'btn block ' + (s.process_on ? 'danger' : 'primary');
+          ss.dataset.cmd = 'startstop';
+          $('clear').hidden = !latched;
         }
-        $('clear').hidden = !(s.state === 'LOCKOUT' || s.state === 'ESTOP');
 
         // Monitor de recursos (rodapé). Só leituras baratas vindas do firmware.
         const d = s.diag;
@@ -260,7 +308,7 @@
         await poll();
       } catch (e) { /* ignore */ }
     }
-    $('startstop').addEventListener('click', () => cmd('startstop'));
+    $('startstop').addEventListener('click', () => cmd($('startstop').dataset.cmd || 'startstop'));
     $('clear').addEventListener('click', () => cmd('clear'));
 
     poll();

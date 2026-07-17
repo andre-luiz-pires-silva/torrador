@@ -578,18 +578,23 @@ void loop() {
     }
   }
 
+  // In Artisan mode there is no local START latch — Artisan owns the demand, so the
+  // process is "active" whenever we are not latched/faulted (the pre-empts above set
+  // ESTOP/LOCKOUT/FAULT). Manual/auto keep the physical START/STOP latch.
+  bool processActive = (config.mode == Mode::ARTISAN) ? true : processOn;
+
   // ---- State machine (optimistic: enable => firing; a fault drops to LOCKOUT) ----
   switch (state) {
     case State::IDLE:
-      if (processOn && !sensorFault) state = demand ? State::RUN : State::HOLD;
+      if (processActive && !sensorFault) state = demand ? State::RUN : State::HOLD;
       break;
     case State::RUN:
-      if (!processOn)       state = State::IDLE;
+      if (!processActive)   state = State::IDLE;
       else if (faultActive) state = State::LOCKOUT;   // INV reported a flame fault
       else if (!demand)     state = State::HOLD;       // temperature satisfied
       break;
     case State::HOLD:
-      if (!processOn)  state = State::IDLE;
+      if (!processActive)  state = State::IDLE;
       else if (demand) state = State::RUN;
       break;
     case State::LOCKOUT:

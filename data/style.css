@@ -131,6 +131,17 @@ h1 { font-size: 1.15rem; font-weight: 700; margin: 0; letter-spacing: -.01em; }
 .range.off  .range-fill   { background: var(--line-2); }
 .range.off  .range-marker { border-color: var(--line-2); }
 
+/* Mode-detail slot: the auto band or the Artisan command live here, below the
+   BT/ET/state trio so that trio stays identical across modes. A hairline detaches
+   it from the readings; only one shows at a time (manual shows none). */
+.mode-detail { margin-top: .3rem; padding-top: .9rem; border-top: 1px solid var(--line); }
+/* Artisan command: a header (MODBUS link) over one row per command (today only heat). */
+.artisan-cmd { display: flex; flex-direction: column; gap: .55rem; }
+.artisan-cmd .range { margin-top: 0; }
+.art-link { font-size: .72rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+/* Command-row label ("Aquecimento") — readable ink, not the faint uppercase eyebrow. */
+.range-sub { font-size: .82rem; font-weight: 700; color: var(--ink); }
+
 /* --- Buttons --------------------------------------------------------------- */
 .btn {
   font: inherit; font-weight: 700; cursor: pointer;

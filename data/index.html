@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Torrador</title>
   <!-- bump ?v= sempre que style.css mudar (invalida o cache longo do navegador) -->
-  <link rel="stylesheet" href="/style.css?v=5">
+  <link rel="stylesheet" href="/style.css?v=6">
 </head>
 <body>
   <main class="wrap">
@@ -51,26 +51,41 @@
       <div>
         <span class="eyebrow">Temperatura do grão · BT</span>
         <div class="hero"><span class="val" id="bt">--</span><span class="unit">°C</span></div>
-        <!-- Faixa de controle: pertence ao BT, então vive colada a ele (só em Automático). -->
-        <div class="range heat" id="band" hidden>
-          <div class="range-head">
-            <span class="range-lbl">Faixa de controle</span>
-            <span class="range-now" id="bandNow">—</span>
-          </div>
-          <div class="range-track">
-            <div class="range-fill" id="bandFill"></div>
-            <div class="range-marker" id="bandMarker"></div>
-          </div>
-          <div class="range-ends">
-            <span>mín <b id="bandMin">—</b></span>
-            <span>máx <b id="bandMax">—</b></span>
-          </div>
+      </div>
+      <div>
+        <span class="eyebrow">Temperatura do ar · ET</span>
+        <div class="hero small"><span class="val" id="et">--</span><span class="unit">°C</span></div>
+      </div>
+      <div class="chip" id="state"><span class="dot"></span><span id="stateLabel">—</span></div>
+
+      <!-- Detalhe do modo: abaixo das leituras, num slot único, para que BT/ET/estado
+           fiquem idênticos nos três modos. Só um destes aparece por vez (manual: nenhum). -->
+      <!-- Faixa de controle do BT — só em Automático (posição do BT entre mín/máx). -->
+      <div class="range mode-detail heat" id="band" hidden>
+        <div class="range-head">
+          <span class="range-lbl">Faixa de controle · BT</span>
+          <span class="range-now" id="bandNow">—</span>
         </div>
-        <!-- Comando do Artisan: só no modo Artisan; ocupa o mesmo lugar da faixa.
-             Mostra o vínculo com o Artisan e a potência que ele está pedindo. -->
-        <div class="range" id="artisan" hidden>
+        <div class="range-track">
+          <div class="range-fill" id="bandFill"></div>
+          <div class="range-marker" id="bandMarker"></div>
+        </div>
+        <div class="range-ends">
+          <span>mín <b id="bandMin">—</b></span>
+          <span>máx <b id="bandMax">—</b></span>
+        </div>
+      </div>
+
+      <!-- Comando do Artisan — só no modo Artisan. Cabeçalho traz o vínculo MODBUS;
+           cada linha é um comando. Hoje só Aquecimento (tambor/ar podem vir depois). -->
+      <div class="artisan-cmd mode-detail" id="artisan" hidden>
+        <div class="range-head">
+          <span class="range-lbl">Comando do Artisan</span>
+          <span class="art-link" id="artLink">—</span>
+        </div>
+        <div class="range heat" id="artHeat">
           <div class="range-head">
-            <span class="range-lbl">Comando do Artisan</span>
+            <span class="range-sub">Aquecimento</span>
             <span class="range-now" id="artPow">—</span>
           </div>
           <div class="range-track">
@@ -78,16 +93,11 @@
             <div class="range-marker" id="artThr"></div>
           </div>
           <div class="range-ends">
-            <span id="artLink">—</span>
+            <span>desligado</span>
             <span>aciona acima de <b id="artThrLbl">—</b></span>
           </div>
         </div>
       </div>
-      <div>
-        <span class="eyebrow">Temperatura do ar · ET</span>
-        <div class="hero small"><span class="val" id="et">--</span><span class="unit">°C</span></div>
-      </div>
-      <div class="chip" id="state"><span class="dot"></span><span id="stateLabel">—</span></div>
     </div>
 
     <div class="actions">
@@ -232,7 +242,7 @@
           // Satisfeito (verde) quando o processo segura a temperatura (HOLD) ou BT ≥ máx;
           // caso contrário está aquecendo (ember).
           const satisfied = s.state === 'HOLD' || (s.bt_c != null && s.bt_c >= s.max_c);
-          band.className = 'range ' + (satisfied ? 'ok' : 'heat');
+          band.className = 'range mode-detail ' + (satisfied ? 'ok' : 'heat');
           $('bandNow').textContent = s.bt_c == null ? '—'
             : (s.bt_c < s.min_c ? 'abaixo' : s.bt_c >= s.max_c ? 'no topo' : 'dentro');
         } else {
@@ -254,7 +264,7 @@
           $('artFill').style.width = (pow == null ? 0 : pow) + '%';
           $('artThr').style.left = thr + '%';
           const heating = pow != null && pow > thr;
-          artisan.className = 'range ' + (heating ? 'heat' : 'off');
+          $('artHeat').className = 'range ' + (heating ? 'heat' : 'off');
         } else {
           artisan.hidden = true;
         }

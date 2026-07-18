@@ -43,8 +43,9 @@ void modbusPublishTemps(float btC, float etC);
 // Meaningful only in ARTISAN mode; the caller maps it to on/off by threshold.
 uint16_t modbusBurnerPower();
 
-// True if Artisan sent any MODBUS request within the last `withinMs`. Activity-
-// based (survives the server's idle-timeout socket drops), so it reflects real
-// polling — the meaningful "Artisan is talking to us" signal, not just an open
-// socket. False until the first request is ever received.
-bool modbusLinked(uint32_t withinMs);
+// True while a MODBUS TCP client (Artisan) is connected — i.e. the socket is
+// open, regardless of whether it is actively polling. This mirrors Artisan's own
+// "Connected via MODBUS" status (socket-based, not traffic-based), so an idle-but-
+// connected Artisan still reads as linked. The server's idle timeout reaps a
+// genuinely dead socket after ~60 s of silence.
+bool modbusConnected();

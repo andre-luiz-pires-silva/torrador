@@ -249,8 +249,8 @@
           band.hidden = true;
         }
 
-        // Comando do Artisan — só no modo Artisan: vínculo (atividade recente do
-        // Artisan) + potência pedida, com o limiar de acionamento marcado no medidor.
+        // Comando do Artisan — só no modo Artisan: vínculo (conexão MODBUS aberta
+        // com o Artisan) + potência pedida, com o limiar de acionamento marcado no medidor.
         const artisan = $('artisan');
         if (s.mode === 'artisan') {
           artisan.hidden = false;

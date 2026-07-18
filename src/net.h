@@ -35,7 +35,7 @@ struct AppStatus {
   float etC       = NAN;      // air/exhaust temperature (ET); NaN on sensor fault (telemetry)
   bool  processOn = false;    // process START/STOP latch
   // Artisan-mode telemetry (meaningful only in ARTISAN mode; the UI shows it there).
-  bool    artisanLinked = false;  // Artisan (MODBUS master) seen polling recently
+  bool    artisanLinked = false;  // Artisan (MODBUS TCP client) currently connected
   uint8_t artisanPower  = 0;      // last burner power commanded by Artisan (0..100)
 };
 void netPublishStatus(const AppStatus &s);

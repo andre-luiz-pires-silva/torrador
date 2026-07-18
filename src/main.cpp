@@ -62,8 +62,8 @@ static float lastBtC = NAN;   // bean temperature (BT) — drives the min/max co
 static float lastEtC = NAN;   // air/exhaust temperature (ET) — telemetry only
 
 // Artisan-mode telemetry, refreshed each loop (used by the OLED + web status).
-// The link is activity-based: true while Artisan polled within this window.
-static const uint32_t ARTISAN_LINK_TIMEOUT_MS = 6000;
+// The link is socket-based: true while a MODBUS TCP client is connected,
+// matching Artisan's own "Connected via MODBUS" status (see modbusConnected()).
 static bool    artisanLinked = false;
 static uint8_t artisanPower  = 0;   // last burner power Artisan commanded (0..100)
 
@@ -511,7 +511,7 @@ void loop() {
   //   ARTISAN : Artisan writes burner power (0..100) over MODBUS; on/off by threshold
   // Artisan telemetry (published for the OLED + web even outside Artisan mode, so
   // the link status is always current). Power is clamped to the 0..100 contract.
-  artisanLinked = modbusLinked(ARTISAN_LINK_TIMEOUT_MS);
+  artisanLinked = modbusConnected();
   uint16_t artPow = modbusBurnerPower();
   artisanPower = (artPow > 100) ? 100 : (uint8_t)artPow;
 

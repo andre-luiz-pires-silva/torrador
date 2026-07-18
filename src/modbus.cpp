@@ -25,11 +25,6 @@ static const uint16_t HR_COUNT = 1;   // HR0=burner power 0..100
 static volatile uint16_t inputRegs[IR_COUNT]   = {0, 0};
 static volatile uint16_t holdingRegs[HR_COUNT] = {0};
 
-// millis() of the last MODBUS request from Artisan (0 = none yet). Stamped by
-// every worker; the control loop reads it to know whether Artisan is live.
-static volatile uint32_t lastReqMs = 0;
-static inline void touchLink() { lastReqMs = millis(); }
-
 // °C -> unsigned register (×10), clamped. Roaster temps are >= 0; a NaN (sensor
 // fault) or negative reading publishes 0 rather than wrapping to a huge value.
 static uint16_t toReg10(float c) {
@@ -41,7 +36,6 @@ static uint16_t toReg10(float c) {
 
 // FC04 — read input registers (BT/ET telemetry).
 static ModbusMessage fcReadInput(ModbusMessage request) {
-  touchLink();
   uint16_t addr = 0, words = 0;
   request.get(2, addr);
   request.get(4, words);
@@ -55,7 +49,6 @@ static ModbusMessage fcReadInput(ModbusMessage request) {
 
 // FC03 — read holding registers (read back the burner-power command).
 static ModbusMessage fcReadHolding(ModbusMessage request) {
-  touchLink();
   uint16_t addr = 0, words = 0;
   request.get(2, addr);
   request.get(4, words);
@@ -69,7 +62,6 @@ static ModbusMessage fcReadHolding(ModbusMessage request) {
 
 // FC06 — write single holding register (Artisan's usual burner-power write).
 static ModbusMessage fcWriteHolding(ModbusMessage request) {
-  touchLink();
   uint16_t addr = 0, value = 0;
   request.get(2, addr);
   request.get(4, value);
@@ -81,7 +73,6 @@ static ModbusMessage fcWriteHolding(ModbusMessage request) {
 
 // FC16 — write multiple holding registers (some masters use this even for one).
 static ModbusMessage fcWriteMultiple(ModbusMessage request) {
-  touchLink();
   uint16_t addr = 0, words = 0;
   uint8_t  bytes = 0;
   request.get(2, addr);
@@ -135,7 +126,4 @@ void modbusPublishTemps(float btC, float etC) {
 
 uint16_t modbusBurnerPower() { return holdingRegs[0]; }
 
-bool modbusLinked(uint32_t withinMs) {
-  uint32_t last = lastReqMs;
-  return last != 0 && (millis() - last) < withinMs;
-}
+bool modbusConnected() { return mbServer.activeClients() > 0; }

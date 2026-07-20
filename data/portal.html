@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Configurações</title>
   <!-- bump ?v= sempre que style.css mudar (invalida o cache longo do navegador) -->
-  <link rel="stylesheet" href="/style.css?v=5">
+  <link rel="stylesheet" href="/style.css?v=7">
 </head>
 <body>
   <main class="wrap">
@@ -29,13 +29,33 @@
     <section class="section" id="panel-op" role="tabpanel" aria-labelledby="tab-op">
       <form class="form" id="form-op">
         <div class="field">
-          <label>Modo de controle</label>
-          <div class="seg" id="ctrlmode">
-            <label><input type="radio" name="mode" value="manual"><span>Manual</span></label>
-            <label><input type="radio" name="mode" value="auto"><span>Automático</span></label>
-            <label><input type="radio" name="mode" value="artisan"><span>Artisan</span></label>
+          <label id="ctrlmode-lbl">Modo de controle</label>
+          <div class="modes" id="ctrlmode" role="radiogroup" aria-labelledby="ctrlmode-lbl">
+            <label class="mode">
+              <input type="radio" name="mode" value="manual">
+              <span class="mode-radio" aria-hidden="true"></span>
+              <span class="mode-body">
+                <span class="mode-title">Manual</span>
+                <span class="mode-desc">O operador liga e desliga o queimador com Iniciar/Parar.</span>
+              </span>
+            </label>
+            <label class="mode">
+              <input type="radio" name="mode" value="auto">
+              <span class="mode-radio" aria-hidden="true"></span>
+              <span class="mode-body">
+                <span class="mode-title">Automático</span>
+                <span class="mode-desc">O queimador regula sozinho pela banda de temperatura do grão (BT) abaixo.</span>
+              </span>
+            </label>
+            <label class="mode">
+              <input type="radio" name="mode" value="artisan">
+              <span class="mode-radio" aria-hidden="true"></span>
+              <span class="mode-body">
+                <span class="mode-title">Artisan</span>
+                <span class="mode-desc">O software Artisan comanda o queimador via MODBUS; o Torrador envia as temperaturas. Ajuste a conexão abaixo.</span>
+              </span>
+            </label>
           </div>
-          <p class="hint" id="ctrl-hint"></p>
         </div>
 
         <div class="field" id="op-auto" hidden>
@@ -269,16 +289,13 @@
     }
     TABS.forEach(id => $('tab-' + id).addEventListener('click', () => selectTab(id)));
 
-    /* ---------- Operation: control-mode hint ---------- */
-    const CTRL_HINTS = {
-      manual:  'O operador liga e desliga o queimador com Iniciar/Parar.',
-      auto:    'O queimador regula sozinho pela banda de temperatura do grão (BT) abaixo.',
-      artisan: 'O software Artisan comanda o queimador via MODBUS; o Torrador envia as temperaturas. Ajuste a conexão abaixo.',
-    };
+    /* ---------- Operation: control-mode selection ---------- */
     function ctrlChanged() {
       const sel = document.querySelector('#ctrlmode input:checked');
       const v = sel ? sel.value : 'manual';
-      $('ctrl-hint').textContent = CTRL_HINTS[v] || '';
+      // Mark the chosen card (ember border + tint) so the selected mode is unambiguous.
+      document.querySelectorAll('#ctrlmode .mode').forEach(m =>
+        m.classList.toggle('sel', m.querySelector('input').value === v));
       // Mode-specific fields: the band belongs to Automático, the MODBUS settings
       // to Artisan. Each mode reveals its own section here.
       $('op-auto').hidden = (v !== 'auto');

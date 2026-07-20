@@ -199,6 +199,34 @@ input:focus { outline: none; border-color: var(--ember); box-shadow: 0 0 0 3px v
 .seg input:checked + span { background: var(--surface); color: var(--ink); box-shadow: 0 1px 2px #0000001f; }
 .seg input:focus-visible + span { outline: 2px solid var(--ember); outline-offset: 1px; }
 
+/* --- Mode cards (radio) ---------------------------------------------------- */
+/* A 3-way choice where each option carries its own description and downstream
+   settings — full-width radio cards read unambiguously as "pick one", unlike the
+   compact .seg toggle. Selected state reuses the .net.sel ember pair. */
+.modes { display: flex; flex-direction: column; gap: .4rem; }
+.mode {
+  display: flex; align-items: flex-start; gap: .6rem; margin: 0;
+  padding: .7rem .8rem; background: var(--surface);
+  border: 1.5px solid var(--line-2); border-radius: 10px; cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.mode input { position: absolute; opacity: 0; pointer-events: none; }
+.mode-radio {
+  flex: 0 0 auto; width: 18px; height: 18px; margin-top: .05rem;
+  border: 1.5px solid var(--line-2); border-radius: 50%; position: relative;
+  transition: border-color .15s;
+}
+.mode-title { display: block; font-size: .9rem; font-weight: 700; color: var(--ink); }
+/* The card is a <label>, which inherits the global 600 weight — reset it so the
+   description reads as body copy against the bold title. */
+.mode-desc  { display: block; font-size: .8rem; font-weight: 400; color: var(--muted); line-height: 1.4; margin-top: .1rem; }
+.mode.sel { border-color: var(--ember); background: #fff7ed; }
+.mode.sel .mode-radio { border-color: var(--ember); }
+.mode.sel .mode-radio::after {
+  content: ""; position: absolute; inset: 3px; border-radius: 50%; background: var(--ember);
+}
+.mode input:focus-visible + .mode-radio { outline: 2px solid var(--ember); outline-offset: 2px; }
+
 /* --- Tabs ------------------------------------------------------------------ */
 .tabs { display: flex; gap: 1.4rem; border-bottom: 1.5px solid var(--line); margin-bottom: 1.4rem; }
 .tab {

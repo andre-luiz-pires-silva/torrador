@@ -67,7 +67,7 @@ flowchart LR
 | Spark electrode | 1 | ignition |
 | PC817 optocoupler | 1 | reads INV 12V fault → ESP |
 | Resistor 2.2 kΩ, 1/4 W | 1 | PC817 LED series resistor |
-| Relay module, mains-rated (~10A/250VAC), ESP-driveable | 1 | INV enable (power-gate) |
+| Relay module, mains-rated (~10A/250VAC), ESP-driveable | 1 | INV enable (power-gate). Opto-isolated **active-LOW** module, 5V coil |
 | RC snubber (~100Ω + 100nF X2) | 1 | across the valve coil |
 | Push-button | 2 | bench: START/STOP (process) + flame-fault input |
 
@@ -89,7 +89,9 @@ flowchart LR
 | OLED SSD1306 | GND | GND | — | |
 | OLED SSD1306 | SDA | GPIO21 | `PIN_OLED_SDA` | I2C |
 | OLED SSD1306 | SCL | GPIO22 | `PIN_OLED_SCL` | I2C |
-| INV enable / bench LED | IN / anode | GPIO25 | `PIN_INV_ENABLE` | final HW: drives the INV mains relay (§4). Bench: GPIO25 → 330Ω → LED → GND (active-high) |
+| Enable relay module | IN1 | GPIO25 | `PIN_INV_ENABLE` | **active-LOW** (LOW = coil energised = INV powered). Polarity lives in `INV_ENABLE_ACTIVE_HIGH` |
+| Enable relay module | VCC | 5V (VIN) | — | ~70 mA/channel — **not** 3V3. Keep the JD-VCC jumper fitted (coil shares the 5V rail) |
+| Enable relay module | GND | GND | — | low-voltage side only; contacts stay mains-referenced (§5) |
 | PC817 (transistor) | collector | GPIO32 | `PIN_FLAME_FAULT` | final HW: **active-LOW** (fault ⇒ LOW), `INPUT_PULLUP` |
 | PC817 (transistor) | emitter | GND | — | final HW only |
 | Flame-fault button | — | 3V3 ↔ GPIO32 | `PIN_FLAME_FAULT` | bench: **active-high**, `INPUT_PULLDOWN` (pressed = flame fault → LOCKOUT). Final HW: the PC817 output above |
@@ -131,7 +133,8 @@ of this firmware** (installer's responsibility) — see `../design-flame-control
 
 > **Roadmap:** wiring the real INV + gas valve on this mains side is the **final
 > phase (Phase 3)**. Phase 1 (control logic, dry) and Phase 2 (Artisan integration,
-> still dry) run entirely on the low-voltage side with the LED/button stand-ins below.
+> still dry) run entirely on the low-voltage side: the real enable relay with
+> nothing on its contacts, plus the button stand-ins below.
 
 The current firmware (`src/main.cpp`) runs the burner control flow **without the
 INV or any gas**:
@@ -139,8 +142,17 @@ INV or any gas**:
 - **START/STOP button (GPIO33):** toggles the process on/off.
 - **Flame-fault button (GPIO32):** while firing, a press simulates the INV flame
   fault → the burner latches `LOCKOUT`.
-- **Enable output (GPIO25) → LED** (GPIO25 → 330Ω → LED → GND): lit while the
-  burner is firing (`RUN`).
+- **Enable output (GPIO25) → relay module IN1:** the relay is energised (audible
+  click, module LED on) while the burner is firing (`RUN`). The module is
+  **active-LOW**, so the firmware drives GPIO25 LOW to fire — never write
+  `HIGH`/`LOW` to this pin directly, go through `invEnableLevel()` in
+  `board_config.h`. A bare LED can still stand in for the relay, but it is
+  active-high: flip `INV_ENABLE_ACTIVE_HIGH` to `true` and rebuild.
+- **Reset behaviour to verify on the bench:** between reset and `setup()`, GPIO25
+  is high-impedance and the module's own pull-up decides the state. Reset the ESP
+  with the relay wired and confirm it does **not** click. This is a property of
+  the specific module, not a guarantee — and in Phase 3 it is the difference
+  between gas closed and gas open on every reboot.
 - **BOOT button:** clears the `LOCKOUT`.
 - **Control mode, min/max band, and the over-temperature cutoff** are set from the
   web UI (Settings › Operation) or over serial (`mode`, `min`/`max`, `hardmax`,

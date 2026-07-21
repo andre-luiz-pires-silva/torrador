@@ -20,7 +20,8 @@
 // Bench hardware:
 //   START/STOP button (GPIO33)  -> process on/off (toggle)
 //   FLAME-FAULT button (GPIO32) -> flame fault, aligned to the INV alarm signal
-//   Enable output (GPIO25)      -> LED (stands in for the INV enable relay)
+//   Enable output (GPIO25)      -> active-LOW relay module (stands in for the
+//                                  INV enable relay); see INV_ENABLE_ACTIVE_HIGH
 //   BOOT button (GPIO0)         -> reset a latched LOCKOUT
 //   MAX6675 (BT)                -> temperature for min/max regulation
 //
@@ -417,9 +418,12 @@ void setup() {
   digitalWrite(PIN_MAX6675_CS_ET, HIGH);
   pinMode(PIN_MAX6675_SO, INPUT);
 
-  // Actuator: force OFF before anything else (fail-safe habit).
+  // Actuator: force OFF before anything else (fail-safe habit). The level is
+  // driven before pinMode() so the pin never presents the opposite state for the
+  // instant between becoming an output and the first write.
+  digitalWrite(PIN_INV_ENABLE, invEnableLevel(false));
   pinMode(PIN_INV_ENABLE, OUTPUT);
-  digitalWrite(PIN_INV_ENABLE, LOW);
+  digitalWrite(PIN_INV_ENABLE, invEnableLevel(false));
 
   pinMode(PIN_START_STOP, INPUT_PULLDOWN);
   pinMode(PIN_FLAME_FAULT, INPUT_PULLDOWN);
@@ -447,7 +451,7 @@ void setup() {
   // Watchdog: subscribe this (control) loop to the ESP32 task WDT. The Arduino
   // core inits the TWDT at boot with panic=reboot and a 5 s timeout (sdkconfig
   // CONFIG_ESP_TASK_WDT_*). If the loop ever stalls (e.g. in RUN), the WDT reboots
-  // — and setup() forces PIN_INV_ENABLE LOW first thing, so a stall closes the
+  // — and setup() forces PIN_INV_ENABLE inactive first thing, so a stall closes the
   // burner (fail-safe, safety invariant §9.6). Subscribed AFTER netBegin() so the
   // blocking STA connect (up to 60 s) never counts against us; fed once per loop().
   esp_task_wdt_add(NULL);
@@ -607,7 +611,7 @@ void loop() {
   }
 
   // ---- Output ----
-  digitalWrite(PIN_INV_ENABLE, (state == State::RUN) ? HIGH : LOW);
+  digitalWrite(PIN_INV_ENABLE, invEnableLevel(state == State::RUN));
 
   if (state != prev) {
     Serial.print(F("[torrador] state -> "));

@@ -40,6 +40,16 @@ static const uint8_t PIN_OLED_SCL      = 22;  // I2C clock
 
 // Gas flame controller (INV-27109) interface and provisioning button.
 static const uint8_t PIN_INV_ENABLE    = 25;  // enables INV-27109 via mains relay; bench: LED indicator
+
+// Drive polarity of PIN_INV_ENABLE. The relay module is active-LOW (a LOW input
+// energises the coil, powering the INV). Set to true for an active-HIGH driver
+// such as the bench LED. Never write HIGH/LOW to this pin directly — go through
+// invEnableLevel() so swapping the driver stays a one-line change.
+static const bool INV_ENABLE_ACTIVE_HIGH = false;
+
+static inline uint8_t invEnableLevel(bool on) {
+  return (on == INV_ENABLE_ACTIVE_HIGH) ? HIGH : LOW;
+}
 static const uint8_t PIN_FLAME_FAULT   = 32;  // INV fault via PC817 (active-LOW in final HW); bench: push-button (active-high)
 static const uint8_t PIN_START_STOP    = 33;  // process start/stop toggle button (bench); active-high
 static const uint8_t PIN_BOOT_BUTTON   = 0;   // BOOT button — lockout reset / WiFi credential reset

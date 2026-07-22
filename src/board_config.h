@@ -30,8 +30,8 @@
 // MAX6675 thermocouple readers (shared SPI, individual CS).
 static const uint8_t PIN_MAX6675_SCK   = 18;  // shared thermocouple clock
 static const uint8_t PIN_MAX6675_SO    = 19;  // shared thermocouple data (MISO)
-static const uint8_t PIN_MAX6675_CS_BT = 5;   // bean temperature (BT) chip-select
-static const uint8_t PIN_MAX6675_CS_ET = 4;   // air/exhaust temperature (ET) chip-select (D4)
+static const uint8_t PIN_MAX6675_CS_BT = 26;  // bean temperature (BT) chip-select
+static const uint8_t PIN_MAX6675_CS_ET = 27;  // air/exhaust temperature (ET) chip-select
 
 // SSD1306 0.96" OLED over I2C. These are the ESP32 default Wire pins, so the
 // U8g2 hardware-I2C driver uses them without extra setup.
@@ -39,7 +39,7 @@ static const uint8_t PIN_OLED_SDA      = 21;  // I2C data
 static const uint8_t PIN_OLED_SCL      = 22;  // I2C clock
 
 // Gas flame controller (INV-27109) interface and provisioning button.
-static const uint8_t PIN_INV_ENABLE    = 25;  // enables INV-27109 via mains relay; bench: LED indicator
+static const uint8_t PIN_INV_ENABLE    = 4;   // enables INV-27109 via mains relay; bench: LED indicator
 
 // Drive polarity of PIN_INV_ENABLE. The relay module is active-LOW (a LOW input
 // energises the coil, powering the INV). Set to true for an active-HIGH driver

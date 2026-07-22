@@ -20,7 +20,7 @@
 // Bench hardware:
 //   START/STOP button (GPIO33)  -> process on/off (toggle)
 //   FLAME-FAULT button (GPIO32) -> flame fault, aligned to the INV alarm signal
-//   Enable output (GPIO25)      -> active-LOW relay module (stands in for the
+//   Enable output (GPIO4)       -> active-LOW relay module (stands in for the
 //                                  INV enable relay); see INV_ENABLE_ACTIVE_HIGH
 //   BOOT button (GPIO0)         -> reset a latched LOCKOUT
 //   MAX6675 (BT)                -> temperature for min/max regulation

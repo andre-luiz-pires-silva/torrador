@@ -79,17 +79,17 @@ flowchart LR
 | MAX6675 (BT) | GND | GND | — | |
 | MAX6675 (BT) | SCK | GPIO18 | `PIN_MAX6675_SCK` | shared clock |
 | MAX6675 (BT) | SO  | GPIO19 | `PIN_MAX6675_SO`  | shared data (MISO) |
-| MAX6675 (BT) | CS  | GPIO5  | `PIN_MAX6675_CS_BT` | |
+| MAX6675 (BT) | CS  | GPIO26 | `PIN_MAX6675_CS_BT` | BT's own chip-select |
 | MAX6675 (ET) | VCC | 3V3 | — | ⚠️ **3.3V, not 5V** (SO level → ESP input) |
 | MAX6675 (ET) | GND | GND | — | |
 | MAX6675 (ET) | SCK | GPIO18 | `PIN_MAX6675_SCK` | shared clock — same node as BT |
 | MAX6675 (ET) | SO  | GPIO19 | `PIN_MAX6675_SO`  | shared data — same node as BT |
-| MAX6675 (ET) | CS  | GPIO4  | `PIN_MAX6675_CS_ET` | **D4** — ET's own chip-select |
+| MAX6675 (ET) | CS  | GPIO27 | `PIN_MAX6675_CS_ET` | ET's own chip-select |
 | OLED SSD1306 | VCC | 3V3 | — | |
 | OLED SSD1306 | GND | GND | — | |
 | OLED SSD1306 | SDA | GPIO21 | `PIN_OLED_SDA` | I2C |
 | OLED SSD1306 | SCL | GPIO22 | `PIN_OLED_SCL` | I2C |
-| Enable relay module | IN1 | GPIO25 | `PIN_INV_ENABLE` | **active-LOW** (LOW = coil energised = INV powered). Polarity lives in `INV_ENABLE_ACTIVE_HIGH` |
+| Enable relay module | IN1 | GPIO4 | `PIN_INV_ENABLE` | **active-LOW** (LOW = coil energised = INV powered). Polarity lives in `INV_ENABLE_ACTIVE_HIGH` |
 | Enable relay module | VCC | 5V (VIN) | — | ~70 mA/channel — **not** 3V3. Keep the JD-VCC jumper fitted (coil shares the 5V rail) |
 | Enable relay module | GND | GND | — | low-voltage side only; contacts stay mains-referenced (§5) |
 | PC817 (transistor) | collector | GPIO32 | `PIN_FLAME_FAULT` | final HW: **active-LOW** (fault ⇒ LOW), `INPUT_PULLUP` |
@@ -120,7 +120,7 @@ flowchart LR
 
 The low-voltage and mains domains meet at **exactly two** places — nowhere else:
 
-1. **Enable relay** — the ESP drives the **coil** (low voltage, GPIO25); the
+1. **Enable relay** — the ESP drives the **coil** (low voltage, GPIO4); the
    **contacts** switch 110 VAC to the INV. Power off ⇒ INV off ⇒ **gas closes**.
 2. **PC817 optocoupler** — the INV's 12V buzzer drives the **LED** (mains-referenced
    side); the **transistor** is read by the ESP (GPIO32). Light-only coupling.
@@ -142,13 +142,13 @@ INV or any gas**:
 - **START/STOP button (GPIO33):** toggles the process on/off.
 - **Flame-fault button (GPIO32):** while firing, a press simulates the INV flame
   fault → the burner latches `LOCKOUT`.
-- **Enable output (GPIO25) → relay module IN1:** the relay is energised (audible
+- **Enable output (GPIO4) → relay module IN1:** the relay is energised (audible
   click, module LED on) while the burner is firing (`RUN`). The module is
-  **active-LOW**, so the firmware drives GPIO25 LOW to fire — never write
+  **active-LOW**, so the firmware drives GPIO4 LOW to fire — never write
   `HIGH`/`LOW` to this pin directly, go through `invEnableLevel()` in
   `board_config.h`. A bare LED can still stand in for the relay, but it is
   active-high: flip `INV_ENABLE_ACTIVE_HIGH` to `true` and rebuild.
-- **Reset behaviour to verify on the bench:** between reset and `setup()`, GPIO25
+- **Reset behaviour to verify on the bench:** between reset and `setup()`, GPIO4
   is high-impedance and the module's own pull-up decides the state. Reset the ESP
   with the relay wired and confirm it does **not** click. This is a property of
   the specific module, not a guarantee — and in Phase 3 it is the difference

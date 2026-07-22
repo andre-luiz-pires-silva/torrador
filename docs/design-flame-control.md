@@ -236,7 +236,7 @@ change is saved to `/config.json` immediately. The LOCKOUT is cleared with the
 
 | Signal | Direction | Pin | Note |
 |---|---|---|---|
-| INV enable | output | **GPIO25** | reuses the former "burner relay"; drives a **mains-rated** relay gating the INV's supply; OFF ⇒ gas closed |
+| INV enable | output | **GPIO4** | reuses the former "burner relay"; drives a **mains-rated** relay gating the INV's supply; OFF ⇒ gas closed |
 | INV fault (12V via PC817) | input | **GPIO32** | `INPUT_PULLUP`; **active-LOW** (fault ⇒ LOW); PC817 with a 2.2kΩ LED resistor; bench push-button on the same node |
 
 PC817 fault read:
@@ -250,7 +250,7 @@ INV 12V GND ─────────── LED cathode           ├─► GP
 ```
 Freed by this architecture: the previous separate spark output (GPIO27) and the
 dedicated ionization front-end input — the INV owns both. Unchanged: MAX6675
-(SCK 18 / SO 19 / CS_BT 5 / CS_ET 4), OLED I2C 21/22, BOOT 0.
+(SCK 18 / SO 19 / CS_BT 26 / CS_ET 27), OLED I2C 21/22, BOOT 0.
 Pin numbers are **provisional** and live in `board_config.h` (easy to change);
 they will be refined when the PCB is designed. For now the goal is the simplest
 wiring that exercises the control flow.
@@ -274,7 +274,7 @@ wiring that exercises the control flow.
   normally-closed** (already sourced). Enable relay: a mains-rated relay module
   (~10A / 250VAC), driveable by the ESP.
 - **Fault read (H2):** discrete **PC817** + 2.2kΩ LED resistor (see §10).
-- **Pins (H3):** provisional — enable **GPIO25**, fault **GPIO32**; all pins live
+- **Pins (H3):** provisional — enable **GPIO4**, fault **GPIO32**; all pins live
   in `board_config.h` and are trivial to change. Goal now: the simplest wiring to
   exercise the flow; refine at PCB design.
 

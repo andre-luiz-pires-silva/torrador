@@ -68,7 +68,7 @@ V0 is a **proof of concept** to validate the integration of the ESP32 with the r
 
 #### F2 — Operation control (START/STOP)
 - A single **START/STOP** control toggles the process on/off (the operator's run/stop).
-- On STOP — and at boot — the burner is off. A latched fault (**LOCKOUT**) is cleared with the BOOT button.
+- On STOP — and at boot — the burner is off. A latched fault (**LOCKOUT**) is cleared with a short press of the same START/STOP button.
 
 #### F3 — Control modes (manual / automatic / Artisan)
 The controller has **three explicit control modes** (who owns the heat demand). The mode is selected in the web UI (and over serial); switching mode always cuts the burner first — control authority must not inherit a running flame.
@@ -87,7 +87,7 @@ Independent of the mode, the over-temperature cutoff (F4a), flame fault (LOCKOUT
 
 #### F4a — Independent over-temperature cutoff (`hard_max_temp_c`)
 - A **hard ceiling on BT**, independent of the automatic min/max band, that applies in **every** mode (manual / automatic / Artisan). Optional — leave unset to disable.
-- Reaching it **latches a LOCKOUT** (burner off, cleared only with the BOOT button) — over-temperature is a serious event, above and beyond normal regulation. This is a safety backstop that also protects against a remote master (Artisan) commanding heat.
+- Reaching it **latches a LOCKOUT** (burner off, cleared only with a short press of the START/STOP button) — over-temperature is a serious event, above and beyond normal regulation. This is a safety backstop that also protects against a remote master (Artisan) commanding heat.
 - Configurable in the web UI (Operation) and over serial (`hardmax <c>` / `hardmax -`); persisted to LittleFS.
 
 #### F4b — Loop watchdog
@@ -118,10 +118,11 @@ POWER ON
   - mDNS name (optional; default `torrador`)
 - On save: credentials persisted to LittleFS (`config.json`) -> restart in operation mode
 
-**Configuration reset (3 complementary mechanisms):**
-1. **Physical button at boot:** hold BOOT button (GPIO0) for X seconds at power-on -> erase credentials -> enter AP mode
-2. **Automatic fallback:** connection failure after timeout -> AP mode (covers router/password change)
-3. **Web interface button:** "Reset network configuration" option in operation mode
+**Configuration reset (2 complementary mechanisms):**
+1. **Automatic fallback:** connection failure after timeout -> AP mode (covers router/password change)
+2. **Web interface button:** "Reset network configuration" option in operation mode
+
+> The BOOT button is deliberately **not** used for network reset — it is inaccessible once the controller is installed in the equipment.
 
 #### F6a — Optional web-UI password (HTTP Basic)
 Prevents casual access to the admin interface from other devices on the network — especially in STA mode, where anyone can reach the ESP by IP or `torrador.local` (mDNS).
@@ -304,6 +305,6 @@ artisan: { ... }                       // MODBUS options (Phase 2; scaffolded, n
 7b. A stalled control loop reboots via the watchdog, and the burner-enable output comes up de-energized (fail-safe)
 8. With no saved credentials, the device comes up in AP mode (`Torrador`) and the captive portal opens the configuration page automatically when connecting from a phone
 9. After saving SSID/password in the portal, the device restarts and connects to the configured network
-10. Connection failure after timeout automatically returns to AP mode; the physical boot button and a web interface option also reset the network configuration
+10. Connection failure after timeout automatically returns to AP mode; a web interface option also resets the network configuration
 11. User-facing interface text is in Portuguese (BR), with strings structured to allow future English localization
 12. The product name is not hardcoded: it comes from the branding config, and changing it (plus rebuilding) updates the web UI, serial boot banner, mDNS default hostname, and AP SSID (white-label, per §0.2)

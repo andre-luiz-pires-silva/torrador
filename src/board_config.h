@@ -51,5 +51,4 @@ static inline uint8_t invEnableLevel(bool on) {
   return (on == INV_ENABLE_ACTIVE_HIGH) ? HIGH : LOW;
 }
 static const uint8_t PIN_FLAME_FAULT   = 32;  // INV fault via PC817 (active-LOW in final HW); bench: push-button (active-high)
-static const uint8_t PIN_START_STOP    = 33;  // process start/stop toggle button (bench); active-high
-static const uint8_t PIN_BOOT_BUTTON   = 0;   // BOOT button — lockout reset / WiFi credential reset
+static const uint8_t PIN_START_STOP    = 33;  // process start/stop toggle button (bench); active-high. Also releases a latched LOCKOUT/ESTOP

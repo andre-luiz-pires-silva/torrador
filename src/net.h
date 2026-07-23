@@ -41,9 +41,9 @@ struct AppStatus {
 void netPublishStatus(const AppStatus &s);
 
 // Web-issued control commands, consumed once by the control loop.
-//   START_STOP  — same effect as the physical START/STOP button
-//   CLEAR_LATCH — same effect as BOOT: release a latched LOCKOUT/ESTOP
-enum class NetCommand : uint8_t { NONE, START_STOP, CLEAR_LATCH };
+//   START_STOP — same effect as the physical START/STOP button (toggles the
+//                process, or releases a latched LOCKOUT/ESTOP when latched)
+enum class NetCommand : uint8_t { NONE, START_STOP };
 NetCommand netTakeCommand();
 
 // Active interface, for the display: "AP" or "STA". Reflects reality — a STA

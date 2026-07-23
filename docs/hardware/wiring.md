@@ -95,8 +95,7 @@ flowchart LR
 | PC817 (transistor) | collector | GPIO32 | `PIN_FLAME_FAULT` | final HW: **active-LOW** (fault ⇒ LOW), `INPUT_PULLUP` |
 | PC817 (transistor) | emitter | GND | — | final HW only |
 | Flame-fault button | — | 3V3 ↔ GPIO32 | `PIN_FLAME_FAULT` | bench: **active-high**, `INPUT_PULLDOWN` (pressed = flame fault → LOCKOUT). Final HW: the PC817 output above |
-| START/STOP button | — | 3V3 ↔ GPIO33 | `PIN_START_STOP` | bench: **active-high**, `INPUT_PULLDOWN` (toggles the process on/off) |
-| BOOT button (onboard) | — | GPIO0 | `PIN_BOOT_BUTTON` | lockout reset (short press); network reset later |
+| START/STOP button | — | 3V3 ↔ GPIO33 | `PIN_START_STOP` | bench: **active-high**, `INPUT_PULLDOWN` (toggles the process on/off; a short press also releases a latched LOCKOUT/ESTOP) |
 
 > **Out of initial scope.** Drum-motor automation (on/off or variable speed),
 > ventilation, and other more advanced automations are not wired or controlled in
@@ -153,7 +152,7 @@ INV or any gas**:
   with the relay wired and confirm it does **not** click. This is a property of
   the specific module, not a guarantee — and in Phase 3 it is the difference
   between gas closed and gas open on every reboot.
-- **BOOT button:** clears the `LOCKOUT`.
+- **START/STOP button:** a short press while latched clears the `LOCKOUT`/`ESTOP`.
 - **Control mode, min/max band, and the over-temperature cutoff** are set from the
   web UI (Settings › Operation) or over serial (`mode`, `min`/`max`, `hardmax`,
   `show`). In manual mode the flame follows START; auto regulates the band.

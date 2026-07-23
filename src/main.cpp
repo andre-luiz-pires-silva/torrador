@@ -22,8 +22,10 @@
 //   FLAME-FAULT button (GPIO32) -> flame fault, aligned to the INV alarm signal
 //   Enable output (GPIO4)       -> active-LOW relay module (stands in for the
 //                                  INV enable relay); see INV_ENABLE_ACTIVE_HIGH
-//   BOOT button (GPIO0)         -> reset a latched LOCKOUT
 //   MAX6675 (BT)                -> temperature for min/max regulation
+//
+// The START/STOP button also releases a latched LOCKOUT/ESTOP (a short press while
+// latched returns to IDLE) — there is no separate reset button.
 //
 // Temperature control is a simple min/max band on BT. If min and max are not both
 // configured, the burner stays ON directly. Set over serial (`min <c>`, `max <c>`,
@@ -40,7 +42,6 @@ static const uint32_t DEBOUNCE_MS = 30;
 struct Button { uint8_t pin; bool activeHigh; bool level; bool rawPrev; uint32_t tMark; };
 static Button btnStart = { PIN_START_STOP,  true,  false, false, 0 };
 static Button btnFault = { PIN_FLAME_FAULT, true,  false, false, 0 };
-static Button btnBoot  = { PIN_BOOT_BUTTON, false, false, false, 0 };  // active-low (INPUT_PULLUP)
 
 // Update debounce; return true on a rising edge (released -> pressed).
 static bool btnUpdate(Button &b, uint32_t now) {
@@ -387,14 +388,15 @@ static void renderScreen() {
 
   // Status label is pinned to the bottom bar in every mode, so it never shifts
   // position with the mode. (Accent-free — the 7x13B font lacks accents; the
-  // latch states say BOOT, the physical clear action, not the web wording.)
+  // latch states say "destrave", matching the web wording — the release action is
+  // a short press of the START/STOP button.)
   const char *st;
   switch (state) {
     case State::IDLE:    st = "Parado";          break;
     case State::RUN:     st = "Aquecendo";       break;
     case State::HOLD:    st = "Temperatura OK";  break;
-    case State::LOCKOUT: st = "Falha — BOOT";    break;
-    case State::ESTOP:   st = "Emerg. — BOOT";   break;
+    case State::LOCKOUT: st = "Falha — destrave";  break;
+    case State::ESTOP:   st = "Emerg. — destrave"; break;
     case State::FAULT:   st = "Falha sensor BT"; break;
     default:             st = "";                break;
   }
@@ -427,7 +429,6 @@ void setup() {
 
   pinMode(PIN_START_STOP, INPUT_PULLDOWN);
   pinMode(PIN_FLAME_FAULT, INPUT_PULLDOWN);
-  pinMode(PIN_BOOT_BUTTON, INPUT_PULLUP);
 
   // Splash reports what startup is about to do, so the wait is transparent.
   display.begin();
@@ -491,15 +492,10 @@ void loop() {
 
   bool startEdge = btnUpdate(btnStart, now);
   btnUpdate(btnFault, now);
-  bool bootEdge = btnUpdate(btnBoot, now);
   bool faultActive = btnFault.level;
 
-  // Web commands act exactly like the physical buttons (the loop owns safety).
-  switch (netTakeCommand()) {
-    case NetCommand::START_STOP:  startEdge = true; break;
-    case NetCommand::CLEAR_LATCH: bootEdge  = true; break;
-    default: break;
-  }
+  // Web commands act exactly like the physical button (the loop owns safety).
+  if (netTakeCommand() == NetCommand::START_STOP) startEdge = true;
 
   if (now - lastReadMs >= SENSOR_INTERVAL_MS) {
     lastReadMs = now;
@@ -546,18 +542,21 @@ void loop() {
     modbusSetActive(config.mode == Mode::ARTISAN);
     Serial.println(F("[torrador] mode changed — burner off"));
   }
-  // BOOT clears a latched safety stop (INV-fault lockout or Artisan e-stop).
-  if (bootEdge && (state == State::LOCKOUT || state == State::ESTOP)) {
+  // The START/STOP button clears a latched safety stop (INV-fault lockout or
+  // Artisan e-stop). The edge is consumed here so the same press does not also
+  // toggle the process / trigger an e-stop in the per-mode blocks below.
+  if (startEdge && (state == State::LOCKOUT || state == State::ESTOP)) {
     state = State::IDLE; processOn = false;
+    startEdge = false;
   }
-  // Sensor fault fails safe, except while latched (LOCKOUT/ESTOP need BOOT).
+  // Sensor fault fails safe, except while latched (LOCKOUT/ESTOP stay latched).
   if (sensorFault && state != State::LOCKOUT && state != State::ESTOP) {
     state = State::FAULT; processOn = false;
   }
   // Independent over-temperature cutoff: a hard ceiling on BT that holds in every
   // mode (manual/auto/artisan), above and beyond the AUTO band — off always wins.
   // Latches LOCKOUT: over-temp is a serious event, so clearing needs a deliberate
-  // BOOT press. A NaN BT (sensor fault) never trips this — the comparison is false.
+  // START/STOP press. A NaN BT (sensor fault) never trips this — the comparison is false.
   if (config.safety.configured() && !sensorFault &&
       lastBtC >= config.safety.hardMaxC &&
       state != State::LOCKOUT && state != State::ESTOP) {
@@ -567,7 +566,7 @@ void loop() {
 
   if (config.mode == Mode::ARTISAN) {
     // The button is a latched EMERGENCY STOP: cut the INV now, block re-enable
-    // (logic or Artisan) until a BOOT short press releases it.
+    // (logic or Artisan) until a short press of the same button releases it.
     if (startEdge && state != State::ESTOP) {
       state = State::ESTOP; processOn = false;
       Serial.println(F("[torrador] EMERGENCY STOP"));
@@ -602,9 +601,9 @@ void loop() {
       else if (demand) state = State::RUN;
       break;
     case State::LOCKOUT:
-      break;  // latched — only BOOT (handled above) clears it
+      break;  // latched — only a START/STOP press (handled above) clears it
     case State::ESTOP:
-      break;  // latched emergency stop — only BOOT (handled above) clears it
+      break;  // latched emergency stop — only a START/STOP press (handled above) clears it
     case State::FAULT:
       if (!sensorFault) state = State::IDLE;   // sensor recovered
       break;

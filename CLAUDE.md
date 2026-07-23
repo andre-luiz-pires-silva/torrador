@@ -77,7 +77,7 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 - Combustion is delegated to a dedicated flame controller (**Inova INV-27109**): it drives the spark and gas valve, senses flame by ionization, and closes gas on flame loss. The ESP does NOT drive the valve/spark directly.
 - The ESP **enables** the controller by power-gating its mains supply through a relay; **power off ⇒ gas closes** (fail-safe). Force the enable output OFF at the very start of `setup()`, before anything else.
 - The ESP reads the controller's fault output (12V buzzer) through a **PC817 optocoupler** — galvanic isolation; never tie the 12V ground to the ESP ground.
-- The INV-27109 does **not** latch, and its manual states it **must not be used alone as a safety system**. Therefore the ESP implements a **master LOCKOUT** (cut power, refuse to re-enable until a BOOT short press). An independent mechanical safety backstop on the gas line is strongly recommended at installation but is **out of scope of this firmware** (integrator's responsibility).
+- The INV-27109 does **not** latch, and its manual states it **must not be used alone as a safety system**. Therefore the ESP implements a **master LOCKOUT** (cut power, refuse to re-enable until a deliberate short press of the START/STOP button). An independent mechanical safety backstop on the gas line is strongly recommended at installation but is **out of scope of this firmware** (integrator's responsibility).
 - Any fault/absent flame signal is treated as no flame; a **watchdog** cuts the enable (closes gas) if the loop stalls; `hard_max_temp_c` is an independent over-temperature cutoff.
 - This phase runs **DRY**: no real gas; the fault/flame input is exercised with a push-button (or the real INV, which faults with no gas).
 
@@ -85,7 +85,7 @@ The firmware is **white-label**: the same codebase ships to multiple manufacture
 
 - No saved credentials -> AP mode `Torrador` (IP `192.168.4.1`) + captive portal. AP SSID is `{Brand}`, derived from the branding config (`Torrador` for the default brand).
 - STA connection failure after timeout (~60s) -> automatic fallback to AP mode.
-- Credential reset: BOOT button held at boot, automatic fallback, and `/network/reset` route in the interface.
+- Credential reset: automatic fallback to AP mode, and a `/network/reset` route in the interface. (The BOOT button is not used — it is inaccessible once the controller is installed.)
 
 ## Decisions already made (do not reopen unless the author asks)
 

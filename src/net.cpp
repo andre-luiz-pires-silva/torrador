@@ -377,15 +377,15 @@ static void handleStatus(AsyncWebServerRequest *req) {
   req->send(res);
 }
 
-// Web control commands — queued for the control loop (single slot). START/STOP
-// and latch-clear mirror the physical buttons; the loop owns all safety logic.
+// Web control command — queued for the control loop (single slot). START/STOP
+// mirrors the physical button (toggles, or releases a latch when latched); the
+// loop owns all safety logic.
 static void handleCommand(AsyncWebServerRequest *req) {
   if (!requireAuth(req)) return;
   String cmd = req->hasParam("cmd", true) ? req->getParam("cmd", true)->value() : "";
   bool ok = true;
-  if      (cmd == "startstop") pendingCmd = NetCommand::START_STOP;
-  else if (cmd == "clear")     pendingCmd = NetCommand::CLEAR_LATCH;
-  else                         ok = false;
+  if   (cmd == "startstop") pendingCmd = NetCommand::START_STOP;
+  else                      ok = false;
 
   AsyncResponseStream *res = req->beginResponseStream("application/json");
   res->setCode(ok ? 200 : 400);

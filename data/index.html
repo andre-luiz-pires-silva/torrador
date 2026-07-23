@@ -102,7 +102,6 @@
 
     <div class="actions">
       <button id="startstop" class="btn block primary">—</button>
-      <button id="clear" class="btn block ghost" hidden>Destravar</button>
     </div>
 
     <!-- Monitor de recursos: discreto, sem cor, só saúde do equipamento.
@@ -180,7 +179,6 @@
       document.body.classList.toggle('offline', on);
       $('offlineBanner').hidden = !on;
       $('startstop').disabled = on;   // não dá para comandar um equipamento offline
-      $('clear').disabled = on;
       // A engrenagem é um link: navegar até /settings offline não carrega, então
       // bloqueamos clique (CSS) e foco por teclado, e sinalizamos via aria.
       const cfg = $('cfgLink');
@@ -269,26 +267,21 @@
           artisan.hidden = true;
         }
 
+        // Um único botão em todos os modos: quando travado (LOCKOUT/ESTOP) ele vira
+        // "Destravar"; caso contrário, Parada de emergência (Artisan) ou
+        // Iniciar/Parar (manual/auto). O comando enviado é sempre 'startstop' — o
+        // firmware decide destravar ou alternar conforme o estado.
         const ss = $('startstop');
         const latched = (s.state === 'LOCKOUT' || s.state === 'ESTOP');
-        if (s.mode === 'artisan') {
-          // O botão é a parada de emergência; uma vez travado, ele próprio vira a
-          // ação de destravar (sem botão extra) — como Iniciar/Parar no manual.
-          if (latched) {
-            ss.textContent = 'Destravar';
-            ss.className = 'btn block ghost';
-            ss.dataset.cmd = 'clear';
-          } else {
-            ss.textContent = 'Parada de emergência';
-            ss.className = 'btn block danger';
-            ss.dataset.cmd = 'startstop';
-          }
-          $('clear').hidden = true;   // no Artisan, o mesmo botão faz as duas ações
+        if (latched) {
+          ss.textContent = 'Destravar';
+          ss.className = 'btn block ghost';
+        } else if (s.mode === 'artisan') {
+          ss.textContent = 'Parada de emergência';
+          ss.className = 'btn block danger';
         } else {
           ss.textContent = s.process_on ? 'Parar' : 'Iniciar';
           ss.className = 'btn block ' + (s.process_on ? 'danger' : 'primary');
-          ss.dataset.cmd = 'startstop';
-          $('clear').hidden = !latched;
         }
 
         // Monitor de recursos (rodapé). Só leituras baratas vindas do firmware.
@@ -318,8 +311,7 @@
         await poll();
       } catch (e) { /* ignore */ }
     }
-    $('startstop').addEventListener('click', () => cmd($('startstop').dataset.cmd || 'startstop'));
-    $('clear').addEventListener('click', () => cmd('clear'));
+    $('startstop').addEventListener('click', () => cmd('startstop'));
 
     poll();
     setInterval(poll, 1000);

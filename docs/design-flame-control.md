@@ -84,7 +84,7 @@ now exist and are the primary configuration surface — serial remains as a fall
 | D3 | **Direct ignition, single gas valve** (no pilot), driven by the INV | Simplest topology; the INV cycles the spark (S1) and holds the valve (S2). |
 | D4 | Control the INV by **power-gating its mains via a relay** (it has no enable input) | The INV runs when energized; the ESP relay is the call-for-heat and a hard master cutoff — **power off ⇒ gas closes**. |
 | D5 | Read the INV fault (12V buzzer) via a **PC817 optocoupler** | Galvanic isolation from the mains-referenced 12V; clean 3.3V logic to the ESP. |
-| D6 | **ESP-level master LOCKOUT**; reset via BOOT short press | The INV does not latch and its manual says it must not be the sole safety system. The ESP latches and refuses to re-enable until manual reset. |
+| D6 | **ESP-level master LOCKOUT**; reset via a short press of the START/STOP button | The INV does not latch and its manual says it must not be the sole safety system. The ESP latches and refuses to re-enable until manual reset. |
 | D7 | Temperature regulation is a simple **min/max** band on **BT** | Below min → demand heat; above max → stop (hysteresis). If min/max are not both set, the burner stays on directly. Deliberately minimal — no rule engine, no BT/ET selection. |
 | D8 | Configuration via **serial commands** (`min` / `max` / `show`) | Simple and scriptable; runtime now, LittleFS persistence later; web UI later. |
 | D9 | Independent mechanical safety backstop — **out of scope** of this FW/controller (installer's responsibility) | Manufacturer says the INV must not be the sole safety system; a mechanical backstop is strongly recommended at installation, but this software cannot provide it. Documented, not implemented. |
@@ -129,8 +129,8 @@ RUN  ──(fault asserted by INV)──────────► LOCKOUT
 RUN  ──(demand falls: temp > max)───────► HOLD
 RUN/HOLD ──(process STOP)───────────────► IDLE
 HOLD ──(demand rises: temp < min)───────► RUN
-LOCKOUT ──(BOOT short press)────────────► IDLE
-any + BT ≥ hard_max_temp_c ──────────────► LOCKOUT   (over-temp cutoff; BOOT to clear)
+LOCKOUT ──(START/STOP short press)──────► IDLE
+any + BT ≥ hard_max_temp_c ──────────────► LOCKOUT   (over-temp cutoff; START/STOP to clear)
 any + temp-sensor fault ────────────────► FAULT ──(fault clears)──► IDLE
 ```
 
@@ -207,7 +207,7 @@ change is saved to `/config.json` immediately. The LOCKOUT is cleared with the
    (valve closed). The ESP forces the enable output OFF at the very start of
    `setup()`, so reboot/brownout/crash leaves gas closed.
 3. **Master lockout is latched** — cleared only by a deliberate human action
-   (BOOT press); never by automatic restart.
+   (a short press of the START/STOP button); never by automatic restart.
 4. **Galvanic isolation** on the fault read (PC817) — never tie the INV's 12V
    ground to the ESP ground.
 5. **Fault / absent signal fails safe:** any fault or missing flame signal is
@@ -296,7 +296,7 @@ wiring that exercises the control flow.
    to `RUN` immediately (optimistic); a later fault drops it to `LOCKOUT`.
 3. A fault (12V) during ignition or run drops the burner to `LOCKOUT` and cuts the
    enable (gas closed).
-4. `LOCKOUT` clears only via the BOOT button; no auto-restart.
+4. `LOCKOUT` clears only via a short press of the START/STOP button; no auto-restart.
 5. When demand falls (`temp > max`) the ESP cuts the enable (back to `HOLD`).
 6. `hard_max_temp_c` forces shutdown regardless of the band.
 7. A temp-sensor fault (open thermocouple) drives `FAULT` with the enable off.
